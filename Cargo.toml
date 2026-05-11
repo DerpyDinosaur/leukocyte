@@ -4,25 +4,3 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-color-eyre = "0.6.3"
-crossterm = "0.29.0"
-ratatui = "0.30.0"
-
-[profile.dev]
-opt-level = 0
-debug = true
-split-debuginfo = '...'  # Platform-specific.
-strip = "none"
-debug-assertions = true
-overflow-checks = true
-lto = false
-panic = 'unwind'
-incremental = true
-codegen-units = 256
-rpath = false
-
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = "s"
-strip = true
