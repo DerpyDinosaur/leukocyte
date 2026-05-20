@@ -1,10 +1,9 @@
 use clap::Parser;
 
 mod cli;
-mod lib;
 mod shim;
 
-static PACKAGE_MANAGER: [&str; 4] = ["bun", "npm", "yarn", "pnpm"];
+static _PACKAGE_MANAGER: [&str; 4] = ["bun", "npm", "yarn", "pnpm"];
 
 fn main() {
     // Nom all arguments from environment
@@ -35,7 +34,7 @@ fn run_as_shim(package_manager: &str, args: &Vec<String>) {
     }
 }
 
-fn run_as_leuko(args: &Vec<String>) {
+fn run_as_leuko(_args: &Vec<String>) {
     let _cli = cli::Cli::parse();
     println!("Leuko: Hi im Leuko!");
 

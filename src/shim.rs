@@ -13,7 +13,7 @@ enum LocateError {
 }
 
 pub fn execute(target: &str) {
-    let package_manager_path = locate_package_manager(&target);
+    let _package_manager_path = locate_package_manager(&target);
 }
 
 fn locate_package_manager(target: &str) -> Result<PathBuf, LocateError> {
