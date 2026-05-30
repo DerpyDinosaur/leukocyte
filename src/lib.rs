@@ -36,8 +36,6 @@ struct NpmRegistryScripts {
     install: Option<String>,
 }
 
-// What program was invoked and caught by leuko
-// Take the first argument which would be the path of the called software
 pub fn whatami(args: &Vec<String>) -> &str {
     /*
         What program was invoked and caught by leuko
@@ -58,19 +56,52 @@ pub fn whatami(args: &Vec<String>) -> &str {
         .unwrap_or("leuko");
 }
 
-pub fn fetch_npm_registry_details(package: &str) -> Result<String, anyhow::Error> {
+pub fn extract_packages(args: &[String]) -> Vec<String> {
+    /*
+        Get all packages from arguments
+    */
+    let mut packages = Vec::new();
+    for arg in args {
+        if arg.starts_with('-') {
+            continue;
+        }
+        if SUPPORTED_PACKAGE_MANAGERS.contains(&arg.as_str()) {
+            continue;
+        }
+        if SUPPORTED_ADD_PACKAGE_CMDS.contains(&arg.as_str()) {
+            continue;
+        }
+        packages.push(arg.to_string());
+    }
+    packages
+}
+
+pub fn fetch_npm_registry_details(package: &str) -> Result<(), LeukoError> {
     // NPM Registry
     // Get Specific Version -> https://registry.npmjs.org/<package-name>/<version>
     // Get Package Info -> https://registry.npmjs.org/<package-name>
-    let mut res = reqwest::blocking::get(format!("https://registry.npmjs.org/{}", &package))?;
-    let mut body = String::new();
-    res.read_to_string(&mut body)?;
 
-    println!("Status: {}", res.status());
-    println!("Headers:\n{:#?}", res.headers());
-    println!("Body:\n{}", body);
+    let client = Client::new();
+    let url = format!("https://registry.npmjs.org/{}", package);
 
-    Ok(body)
+    let response = match client.get(&url).send() {
+        Ok(res) => res,
+        Err(e) => return Err(LeukoError::ExpectedError(e.to_string())),
+    };
+
+    let data = match response.text() {
+        Ok(text) => text,
+        Err(e) => return Err(LeukoError::ExpectedError(e.to_string())),
+    };
+
+    let details: NpmRegistryResponse = match serde_json::from_str(&data) {
+        Ok(parsed) => parsed,
+        Err(e) => return Err(LeukoError::ExpectedError(e.to_string())),
+    };
+
+    println!("{} {}", details.name, details.version);
+    println!("{:?}", details.scripts.postinstall);
+    Ok(())
 }
 
 #[cfg(test)]

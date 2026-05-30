@@ -1,30 +1,20 @@
 use std::env;
-use thiserror::Error;
 use std::path::PathBuf;
 
-#[derive(Debug, Error)]
-enum LocateError {
-    #[error("Failed to get leuko's path")]
-    ExePathUnavailable,
-    #[error("PATH is not defined in the environment")]
-    PathEnvMissing,
-    #[error("Could not find package manager: {0}")]
-    NotFound(String),
-}
-
-pub fn execute(target: &str) {
+pub fn execute(target: &str) -> Result<(), leuko::LeukoError> {
     let _package_manager_path = locate_package_manager(&target);
+    Ok(())
 }
 
-fn locate_package_manager(target: &str) -> Result<PathBuf, LocateError> {
+fn locate_package_manager(target: &str) -> Result<PathBuf, leuko::LeukoError> {
     // parent() -> return parent folder to ignore later when detected in the path env
     // canonicalize() -> return absolute path, normalized and symbolic links resolved
     let leuko_dir = match env::current_exe() {
         Ok(exe) => exe.parent().and_then(|p| p.canonicalize().ok()),
-        Err(_) => return Err(LocateError::ExePathUnavailable),
+        Err(_) => return Err(leuko::LeukoError::ExePathUnavailable),
     };
 
-    let path_env = env::var_os("PATH").ok_or(LocateError::PathEnvMissing)?;
+    let path_env = env::var_os("PATH").ok_or(leuko::LeukoError::PathEnvMissing)?;
 
     for dir in env::split_paths(&path_env) {
         // Skip paths that are leuko
@@ -45,7 +35,7 @@ fn locate_package_manager(target: &str) -> Result<PathBuf, LocateError> {
         }
     }
 
-    Err(LocateError::NotFound(target.to_string()))
+    Err(leuko::LeukoError::NotFound(target.to_string()))
 }
 
 #[cfg(test)]

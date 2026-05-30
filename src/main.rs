@@ -1,51 +1,59 @@
 use clap::Parser;
 
 mod cli;
+mod commands;
 mod shim;
 
-static _PACKAGE_MANAGER: [&str; 4] = ["bun", "npm", "yarn", "pnpm"];
-
-fn main() {
+fn main() -> Result<(), leuko::LeukoError> {
     // Nom all arguments from environment
     let args = std::env::args().collect();
     let whatami = leuko::whatami(&args);
 
+    if !leuko::SUPPORTED_PACKAGE_MANAGERS.contains(&whatami) {
+        return Err(leuko::LeukoError::ExpectedError(format!(
+            "Package Manager Unsuported: {}",
+            &whatami
+        )));
+    }
+
     match whatami {
-        "leuko" => run_as_leuko(&args),
+        "leuko" => run_as_leuko(),
         _ => run_as_shim(&whatami, &args),
     }
 }
 
-fn run_as_shim(package_manager: &str, args: &Vec<String>) {
-    let _subcommand = args.get(1).map(String::as_str).unwrap_or("");
+fn run_as_shim(package_manager: &str, args: &Vec<String>) -> Result<(), leuko::LeukoError> {
+    /*
+        If node packages fetch details from node registry
+        TODO: If python packages fetch details from ???
 
-    // Detect if the user is installing packages
+        Fetching details for packages could be something leuko does via commands too
+        Giving the user options, if they do not install the shim for a specific package manager
+    */
 
-    // If node packages fetch details from node registry
-    // TODO: If python packages fetch details from ???
+    // Check if subcommand is a supported add package command
+    let subcommand: &str = args.get(1).map(String::as_str).unwrap_or("");
+    let is_installing: bool = leuko::SUPPORTED_ADD_PACKAGE_CMDS.contains(&subcommand);
 
-    // Fetching details for packages could be something leuko does via commands too
-    // Giving the user options, if they do not install the shim for a specific package manager
+    // Get packages from arguments
+    let packages = leuko::extract_packages(&args);
 
-    match package_manager {
-        "npm" => shim::execute("npm"),
-        "bun" => shim::execute("bun"),
-        _ => panic!("Unsupported package manager!")
+    // If you are installing packages, run audit
+    if is_installing && !packages.is_empty() {
+        commands::audit::run(&packages);
     }
+
+    shim::execute(&package_manager)
 }
 
-fn run_as_leuko(_args: &Vec<String>) {
-    let _cli = cli::Cli::parse();
-    println!("Leuko: Hi im Leuko!");
+fn run_as_leuko() -> Result<(), leuko::LeukoError> {
+    let cli = cli::Cli::parse();
 
-    // match cli.command {
-    //     cli::Commands::Install { packages, npm_flags } => {
-    //         let mut all_args = packages.clone();
-    //         all_args.extend(npm_flags);
-    //         commands::install::run(&all_args);
-    //     }
-    //     cli::Commands::Audit { packages } => {
-    //         commands::audit::run(&packages);
-    //     }
-    // }
+    match cli.command {
+        cli::Commands::Audit { packages } => {
+            commands::audit::run(&packages);
+        }
+    }
+
+    Ok(())
 }
