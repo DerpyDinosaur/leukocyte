@@ -52,25 +52,31 @@ fn locate_package_manager(target: &str) -> Result<PathBuf, LocateError> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn locate_package_manager_smoke_test() {
-        let result = locate_package_manager("mkdir");
-        assert!(matches!(result, Ok(path) if path.ends_with("mkdir")));
+    mod locate_package_manager {
+        use super::*;
+
+        #[test]
+        fn smoke_test() {
+            let result = locate_package_manager("mkdir");
+            assert!(matches!(result, Ok(path) if path.ends_with("mkdir")));
+        }
+
+        #[test]
+        fn not_found() {
+            let result = locate_package_manager("this_does_not_exist");
+            assert!(
+                matches!(result, Err(leuko::LeukoError::NotFound(t)) if t == "this_does_not_exist")
+            );
+        }
     }
 
-    #[test]
-    fn locate_package_manager_not_found() {
-        let result = locate_package_manager("this_does_not_exist");
-        assert!(matches!(result, Err(LocateError::NotFound(t)) if t == "this_does_not_exist"));
-    }
+    mod execute {
+        use super::*;
 
-    #[test]
-    fn execute_npm() {
-        execute("npm");
-    }
-
-    #[test]
-    fn execute_bun() {
-        execute("bun");
+        #[test]
+        fn support() {
+            assert!(execute("npm").is_ok());
+            assert!(execute("bun").is_ok());
+        }
     }
 }

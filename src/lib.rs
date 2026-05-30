@@ -39,6 +39,11 @@ struct NpmRegistryScripts {
 // What program was invoked and caught by leuko
 // Take the first argument which would be the path of the called software
 pub fn whatami(args: &Vec<String>) -> &str {
+    /*
+        What program was invoked and caught by leuko
+        Take the first argument which would be the path of the called software
+    */
+
     // Args may have nothing called so we return as leuko by default.
     if args.len() < 1 {
         return "leuko";
@@ -72,27 +77,54 @@ pub fn fetch_npm_registry_details(package: &str) -> Result<String, anyhow::Error
 mod tests {
     use super::*;
 
-    #[test]
-    fn whatami_smoke_test() {
-        let args = vec!["/usr/local/bin/leuko".to_string(), "audit".to_string()];
-        assert_eq!(whatami(&args), "leuko");
+    mod whatami {
+        use super::*;
+        #[test]
+        fn smoke_test() {
+            let args = vec!["/usr/local/bin/leuko".to_string(), "audit".to_string()];
+            assert_eq!(whatami(&args), "leuko");
+        }
+
+        #[test]
+        fn empty_arguments_fallback_to_leuko() {
+            let args = vec![];
+            assert_eq!(whatami(&args), "leuko");
+        }
+
+        #[test]
+        fn relative_path() {
+            let args = vec!["./relative/path/to/npm".to_string()];
+            assert_eq!(whatami(&args), "npm");
+        }
     }
 
-    #[test]
-    fn whatami_empty_arguments_fallback_to_leuko() {
-        let args = vec![];
-        assert_eq!(whatami(&args), "leuko");
+    mod extract_packages {
+        use super::*;
+        #[test]
+        fn filters_flags() {
+            let args = ["add", "-D", "zod"].map(str::to_string).to_vec();
+            assert_eq!(extract_packages(&args), vec!["zod"]);
+        }
+
+        #[test]
+        fn filters_subcommands() {
+            let args = ["add", "zod", "react"].map(str::to_string).to_vec();
+            assert_eq!(extract_packages(&args), vec!["zod", "react"]);
+        }
+
+        #[test]
+        fn empty() {
+            let args = [].map(str::to_string).to_vec();
+            assert!(extract_packages(&args).is_empty());
+        }
     }
 
-    #[test]
-    fn whatami_relative_path() {
-        let args = vec!["./relative/path/to/npm".to_string()];
-        assert_eq!(whatami(&args), "npm");
-    }
-
-    #[test]
-    fn fetch_smoke_test() {
-        let result = fetch_npm_registry_details("zod");
-        assert!(result.is_ok());
+    mod fetch {
+        use super::*;
+        #[test]
+        fn smoke_test() {
+            let result = fetch_npm_registry_details("zod");
+            assert!(result.is_ok());
+        }
     }
 }
