@@ -1,5 +1,40 @@
-use anyhow::Result;
-use std::io::Read;
+use reqwest::blocking::Client;
+use serde::Deserialize;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum LeukoError {
+    // Generic Errors
+    #[error("LeukoError: {0}")]
+    ExpectedError(String),
+    // shim errors
+    #[error("Failed to get leuko's path")]
+    ExePathUnavailable,
+    #[error("PATH is not defined in the environment")]
+    PathEnvMissing,
+    #[error("Could not find package manager: {0}")]
+    NotFound(String),
+    // Unknown Errors
+    #[error("Unknown error occured: {0}")]
+    UnknownError(String),
+}
+
+pub static SUPPORTED_PACKAGE_MANAGERS: [&str; 5] = ["bun", "leuko", "npm", "pnpm", "yarn"];
+pub static SUPPORTED_ADD_PACKAGE_CMDS: [&str; 4] = ["install", "i", "add", "a"];
+
+#[derive(Deserialize)]
+struct NpmRegistryResponse {
+    name: String,
+    version: String,
+    scripts: NpmRegistryScripts,
+}
+
+#[derive(Deserialize)]
+struct NpmRegistryScripts {
+    preinstall: Option<String>,
+    postinstall: Option<String>,
+    install: Option<String>,
+}
 
 // What program was invoked and caught by leuko
 // Take the first argument which would be the path of the called software
