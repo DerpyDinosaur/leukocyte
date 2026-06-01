@@ -1,28 +1,35 @@
 use clap::Parser;
+use leuko::errors::{reporter, LeukoError};
+use leuko::{commands, cli, shim};
 
-mod cli;
-mod commands;
-mod shim;
+// TODO: Checkout Tabled crate
+// TODO: checkout owo colours crate
+// TODO:
 
-fn main() -> Result<(), leuko::LeukoError> {
+fn main() {
     // Nom all arguments from environment
     let args = std::env::args().collect();
     let whatami = leuko::whatami(&args);
 
     if !leuko::SUPPORTED_PACKAGE_MANAGERS.contains(&whatami) {
-        return Err(leuko::LeukoError::ExpectedError(format!(
-            "Package Manager Unsuported: {}",
-            &whatami
-        )));
+        let err = LeukoError::UnsupportedPackageManager(whatami.to_string());
+        reporter::report(&err);
+        std::process::exit(reporter::exit_code(&err));
     }
 
     match whatami {
-        "leuko" => run_as_leuko(),
-        _ => run_as_shim(&whatami, &args),
+        "leuko" => run_as_leuko().unwrap_or_else(|err| {
+            reporter::report(&err);
+            std::process::exit(reporter::exit_code(&err))
+        }),
+        _ => run_as_shim(&whatami, &args).unwrap_or_else(|err| {
+            reporter::report(&err);
+            std::process::exit(reporter::exit_code(&err))
+        }),
     }
 }
 
-fn run_as_shim(package_manager: &str, args: &Vec<String>) -> Result<(), leuko::LeukoError> {
+fn run_as_shim(package_manager: &str, args: &Vec<String>) -> Result<(), LeukoError> {
     /*
         If node packages fetch details from node registry
         TODO: If python packages fetch details from ???
@@ -36,22 +43,22 @@ fn run_as_shim(package_manager: &str, args: &Vec<String>) -> Result<(), leuko::L
     let is_installing: bool = leuko::SUPPORTED_ADD_PACKAGE_CMDS.contains(&subcommand);
 
     // Get packages from arguments
-    let packages = leuko::extract_packages(&args);
+    let packages = leuko::extract_packages(args);
 
     // If you are installing packages, run audit
     if is_installing && !packages.is_empty() {
-        commands::audit::run(&packages);
+        commands::audit::run(&packages)?;
     }
 
     shim::execute(&package_manager)
 }
 
-fn run_as_leuko() -> Result<(), leuko::LeukoError> {
+fn run_as_leuko() -> Result<(), LeukoError> {
     let cli = cli::Cli::parse();
 
     match cli.command {
         cli::Commands::Audit { packages } => {
-            commands::audit::run(&packages);
+            commands::audit::run(&packages)?;
         }
     }
 

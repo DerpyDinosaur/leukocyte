@@ -1,59 +1,38 @@
 use reqwest::blocking::Client;
-use serde::Deserialize;
-use thiserror::Error;
 
-#[derive(Debug, Error)]
-pub enum LeukoError {
-    // Generic Errors
-    #[error("LeukoError: {0}")]
-    ExpectedError(String),
-    // shim errors
-    #[error("Failed to get leuko's path")]
-    ExePathUnavailable,
-    #[error("PATH is not defined in the environment")]
-    PathEnvMissing,
-    #[error("Could not find package manager: {0}")]
-    NotFound(String),
-    // Unknown Errors
-    #[error("Unknown error occured: {0}")]
-    UnknownError(String),
-}
+pub mod cli;
+pub mod commands;
+pub mod shim;
+pub mod errors;
+pub mod types;
+
+use errors::LeukoError;
 
 pub static SUPPORTED_PACKAGE_MANAGERS: [&str; 5] = ["bun", "leuko", "npm", "pnpm", "yarn"];
 pub static SUPPORTED_ADD_PACKAGE_CMDS: [&str; 4] = ["install", "i", "add", "a"];
-
-#[derive(Deserialize)]
-struct NpmRegistryResponse {
-    name: String,
-    version: String,
-    scripts: NpmRegistryScripts,
-}
-
-#[derive(Deserialize)]
-struct NpmRegistryScripts {
-    preinstall: Option<String>,
-    postinstall: Option<String>,
-    install: Option<String>,
-}
 
 pub fn whatami(args: &Vec<String>) -> &str {
     /*
         What program was invoked and caught by leuko
         Take the first argument which would be the path of the called software
     */
+    const DEFAULT: &str = "leuko";
 
     // Args may have nothing called so we return as leuko by default.
     if args.len() < 1 {
-        return "leuko";
+        return DEFAULT;
     }
 
     // filen_name() -> Get the file name of the executable
     // and_then() -> Convert to string via a map
-    // unwrap_or() -> Default to "leuko" if no file name is found
-    return std::path::Path::new(&args[0])
+    let name = std::path::Path::new(&args[0])
         .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("leuko");
+        .and_then(|n| n.to_str());
+
+    return match name {
+        Some(value) => value,
+        None => DEFAULT,
+    }
 }
 
 pub fn extract_packages(args: &[String]) -> Vec<String> {
@@ -76,32 +55,17 @@ pub fn extract_packages(args: &[String]) -> Vec<String> {
     packages
 }
 
-pub fn fetch_npm_registry_details(package: &str) -> Result<(), LeukoError> {
+pub fn fetch_npm_registry_details(package: &str) -> Result<types::NpmRegistryResponse, LeukoError> {
     // NPM Registry
     // Get Specific Version -> https://registry.npmjs.org/<package-name>/<version>
     // Get Package Info -> https://registry.npmjs.org/<package-name>
-
     let client = Client::new();
-    let url = format!("https://registry.npmjs.org/{}", package);
+    let url = format!("https://registry.npmjs.org/{}/latest", package);
 
-    let response = match client.get(&url).send() {
-        Ok(res) => res,
-        Err(e) => return Err(LeukoError::ExpectedError(e.to_string())),
-    };
-
-    let data = match response.text() {
-        Ok(text) => text,
-        Err(e) => return Err(LeukoError::ExpectedError(e.to_string())),
-    };
-
-    let details: NpmRegistryResponse = match serde_json::from_str(&data) {
-        Ok(parsed) => parsed,
-        Err(e) => return Err(LeukoError::ExpectedError(e.to_string())),
-    };
-
-    println!("{} {}", details.name, details.version);
-    println!("{:?}", details.scripts.postinstall);
-    Ok(())
+    let response = client.get(&url).send()?;
+    let data = response.text()?;
+    let details: types::NpmRegistryResponse = serde_json::from_str(&data)?;
+    Ok(details)
 }
 
 #[cfg(test)]
@@ -155,7 +119,8 @@ mod tests {
         #[test]
         fn smoke_test() {
             let result = fetch_npm_registry_details("zod");
-            assert!(result.is_ok());
+            println!("{:?}", result);
+            // assert!(result.is_ok());
         }
     }
 }

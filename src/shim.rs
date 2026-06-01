@@ -1,20 +1,21 @@
 use std::env;
 use std::path::PathBuf;
+use crate::errors::LeukoError;
 
-pub fn execute(target: &str) -> Result<(), leuko::LeukoError> {
+pub fn execute(target: &str) -> Result<(), LeukoError> {
     let _package_manager_path = locate_package_manager(&target);
     Ok(())
 }
 
-fn locate_package_manager(target: &str) -> Result<PathBuf, leuko::LeukoError> {
+fn locate_package_manager(target: &str) -> Result<PathBuf, LeukoError> {
     // parent() -> return parent folder to ignore later when detected in the path env
     // canonicalize() -> return absolute path, normalized and symbolic links resolved
     let leuko_dir = match env::current_exe() {
         Ok(exe) => exe.parent().and_then(|p| p.canonicalize().ok()),
-        Err(_) => return Err(leuko::LeukoError::ExePathUnavailable),
+        Err(_) => return Err(LeukoError::ExePathUnavailable),
     };
 
-    let path_env = env::var_os("PATH").ok_or(leuko::LeukoError::PathEnvMissing)?;
+    let path_env = env::var_os("PATH").ok_or(LeukoError::PathEnvMissing)?;
 
     for dir in env::split_paths(&path_env) {
         // Skip paths that are leuko
@@ -35,7 +36,7 @@ fn locate_package_manager(target: &str) -> Result<PathBuf, leuko::LeukoError> {
         }
     }
 
-    Err(leuko::LeukoError::NotFound(target.to_string()))
+    Err(LeukoError::NotFound(target.to_string()))
 }
 
 #[cfg(test)]
@@ -55,7 +56,7 @@ mod tests {
         fn not_found() {
             let result = locate_package_manager("this_does_not_exist");
             assert!(
-                matches!(result, Err(leuko::LeukoError::NotFound(t)) if t == "this_does_not_exist")
+                matches!(result, Err(LeukoError::NotFound(t)) if t == "this_does_not_exist")
             );
         }
     }
