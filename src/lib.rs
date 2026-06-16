@@ -1,12 +1,9 @@
-use reqwest::blocking::Client;
-
 pub mod cli;
 pub mod commands;
 pub mod shim;
 pub mod errors;
 pub mod types;
-
-use errors::LeukoError;
+pub mod registry;
 
 pub static SUPPORTED_PACKAGE_MANAGERS: [&str; 5] = ["bun", "leuko", "npm", "pnpm", "yarn"];
 pub static SUPPORTED_ADD_PACKAGE_CMDS: [&str; 4] = ["install", "i", "add", "a"];
@@ -55,19 +52,6 @@ pub fn extract_packages(args: &[String]) -> Vec<String> {
     packages
 }
 
-pub fn fetch_npm_registry_details(package: &str) -> Result<types::NpmRegistryResponse, LeukoError> {
-    // NPM Registry
-    // Get Specific Version -> https://registry.npmjs.org/<package-name>/<version>
-    // Get Package Info -> https://registry.npmjs.org/<package-name>
-    let client = Client::new();
-    let url = format!("https://registry.npmjs.org/{}/latest", package);
-
-    let response = client.get(&url).send()?;
-    let data = response.text()?;
-    let details: types::NpmRegistryResponse = serde_json::from_str(&data)?;
-    Ok(details)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,16 +95,6 @@ mod tests {
         fn empty() {
             let args = [].map(str::to_string).to_vec();
             assert!(extract_packages(&args).is_empty());
-        }
-    }
-
-    mod fetch {
-        use super::*;
-        #[test]
-        fn smoke_test() {
-            let result = fetch_npm_registry_details("zod");
-            println!("{:?}", result);
-            // assert!(result.is_ok());
         }
     }
 }
