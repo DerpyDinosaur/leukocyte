@@ -1,6 +1,7 @@
 pub mod reporter;
+use thiserror::Error;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub enum LeukoError {
     /* Shim errors */
     #[error("Failed to get leuko's path")]
