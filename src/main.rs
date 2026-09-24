@@ -3,11 +3,10 @@ use leuko::errors::{LeukoError, reporter};
 use leuko::{cli, commands, shim};
 
 // TODO: Checkout Tabled crate
-// TODO: checkout owo colours crate
-// TODO:
+// TODO: Checkout owo colours crate
+// TODO: Seperate code into different package managers
 
-#[tokio::main]
-async fn main() {
+fn main() {
     // Nom all arguments from environment
     let args = std::env::args().collect();
     let whatami = leuko::whatami(&args);
@@ -19,18 +18,18 @@ async fn main() {
     }
 
     match whatami {
-        "leuko" => run_as_leuko().await.unwrap_or_else(|err| {
+        "leuko" => run_as_leuko().unwrap_or_else(|err| {
             reporter::report(&err);
             std::process::exit(reporter::exit_code(&err))
         }),
-        _ => run_as_shim(&whatami, &args).await.unwrap_or_else(|err| {
+        _ => run_as_shim(&whatami, &args).unwrap_or_else(|err| {
             reporter::report(&err);
             std::process::exit(reporter::exit_code(&err))
         }),
     }
 }
 
-async fn run_as_shim(package_manager: &str, args: &Vec<String>) -> Result<(), LeukoError> {
+fn run_as_shim(package_manager: &str, args: &Vec<String>) -> Result<(), LeukoError> {
     /*
         If node packages fetch details from node registry
         TODO: If python packages fetch details from ???
@@ -48,18 +47,18 @@ async fn run_as_shim(package_manager: &str, args: &Vec<String>) -> Result<(), Le
 
     // If you are installing packages, run audit
     if is_installing && !packages.is_empty() {
-        let _ = commands::audit::run(&packages).await;
+        let _ = commands::audit::run(&packages);
     }
 
     shim::execute(&package_manager)
 }
 
-async fn run_as_leuko() -> Result<(), LeukoError> {
+fn run_as_leuko() -> Result<(), LeukoError> {
     let cli = cli::Cli::parse();
 
     match cli.command {
         cli::Commands::Audit { packages } => {
-            let _ = commands::audit::run(&packages).await;
+            let _ = commands::audit::run(&packages);
         }
     }
 

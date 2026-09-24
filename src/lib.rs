@@ -1,9 +1,12 @@
+use futures::stream::{self, StreamExt};
+use serde::de::DeserializeOwned;
+
 pub mod cli;
 pub mod commands;
-pub mod shim;
 pub mod errors;
-pub mod types;
 pub mod registry;
+pub mod shim;
+pub mod types;
 
 pub static SUPPORTED_PACKAGE_MANAGERS: [&str; 5] = ["bun", "leuko", "npm", "pnpm", "yarn"];
 pub static SUPPORTED_ADD_PACKAGE_CMDS: [&str; 4] = ["install", "i", "add", "a"];
@@ -29,7 +32,7 @@ pub fn whatami(args: &Vec<String>) -> &str {
     return match name {
         Some(value) => value,
         None => DEFAULT,
-    }
+    };
 }
 
 pub fn extract_packages(args: &[String]) -> Vec<String> {
@@ -50,6 +53,48 @@ pub fn extract_packages(args: &[String]) -> Vec<String> {
         packages.push(arg.to_string());
     }
     packages
+}
+
+pub async fn fetch_many_results<T: DeserializeOwned>(
+    urls: &[String],
+    num: Option<usize>,
+) -> Vec<Result<T, reqwest::Error>> {
+    /*
+        Read page 541 for async
+    */
+    let client = reqwest::Client::new();
+    let concurrent = num.unwrap_or(20);
+
+    stream::iter(urls.iter().cloned())
+        .map(|url| {
+            let client = client.clone();
+            async move {
+                let result = client.get(&url).send().await;
+                match result {
+                    Ok(resp) => resp.json::<T>().await,
+                    Err(e) => Err(e),
+                }
+            }
+        })
+        .buffer_unordered(concurrent)
+        .collect()
+        .await
+}
+
+pub fn encode(input: &str) -> String {
+    let mut encoded = String::new();
+    for byte in input.bytes() {
+        // Safe characters per RFC 3986 unreserved set: A-Z, a-z, 0-9, -, _, ., ~
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char);
+            }
+            _ => {
+                encoded.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+    encoded
 }
 
 #[cfg(test)]
