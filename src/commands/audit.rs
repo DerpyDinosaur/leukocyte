@@ -3,8 +3,13 @@ use crate::fetch_many_results;
 use crate::registry::parse_package_name_and_version;
 use crate::registry::types::MetaVersionResponse;
 use tokio::runtime;
+use crate::cli::{AuditArgs, AuditCommands}
 
-pub fn run(packages: &[String]) -> Result<(), LeukoError> {
+pub fn audit_package_file() -> Result<(), LeukoError> {
+    Ok(())
+}
+
+pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
     let parsed_packages: Vec<(String, String)> = packages
         .iter()
         .map(|name| parse_package_name_and_version(name))
@@ -26,6 +31,13 @@ pub fn run(packages: &[String]) -> Result<(), LeukoError> {
     }
 
     Ok(())
+}
+
+pub fn run(args: AuditArgs) -> Result<(), LeukoError> {
+    match args.command {
+        Some(AuditCommands::Pkgs { packages }) => audit_packages(&packages),
+        None => audit_package_file(),
+    }
 }
 
 // #[cfg(test)]

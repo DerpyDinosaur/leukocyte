@@ -1,6 +1,7 @@
 use clap::Parser;
+use leuko::cli::{AuditCommands, Cli, Commands};
 use leuko::errors::{LeukoError, reporter};
-use leuko::{cli, commands, shim};
+use leuko::{commands, shim};
 
 // TODO: Checkout Tabled crate
 // TODO: Checkout owo colours crate
@@ -47,19 +48,17 @@ fn run_as_shim(package_manager: &str, args: &Vec<String>) -> Result<(), LeukoErr
 
     // If you are installing packages, run audit
     if is_installing && !packages.is_empty() {
-        let _ = commands::audit::run(&packages);
+        let _ = commands::audit::run_pkgs(&packages);
     }
 
     shim::execute(&package_manager)
 }
 
 fn run_as_leuko() -> Result<(), LeukoError> {
-    let cli = cli::Cli::parse();
+    let cli = Cli::parse();
 
     match cli.command {
-        cli::Commands::Audit { packages } => {
-            let _ = commands::audit::run(&packages);
-        }
+        Commands::Audit(audit) => commands::audit::run(audit)?,
     }
 
     Ok(())
