@@ -1,5 +1,5 @@
 use clap::Parser;
-use leuko::cli::{AuditCommands, Cli, Commands};
+use leuko::cli::{Cli, Commands};
 use leuko::errors::{LeukoError, reporter};
 use leuko::{commands, shim};
 
@@ -48,7 +48,7 @@ fn run_as_shim(package_manager: &str, args: &Vec<String>) -> Result<(), LeukoErr
 
     // If you are installing packages, run audit
     if is_installing && !packages.is_empty() {
-        let _ = commands::audit::run_pkgs(&packages);
+        let _ = commands::audit::audit_packages(&packages);
     }
 
     shim::execute(&package_manager)

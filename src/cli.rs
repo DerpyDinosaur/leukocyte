@@ -31,6 +31,11 @@ pub enum AuditCommands {
         #[arg(required = true, num_args = 1..)]
         packages: Vec<String>,
     },
+    Test {
+        /// Testing package score cards
+        #[arg(required = true, num_args = 1..)]
+        packages: Vec<String>,
+    },
 }
 
 #[cfg(test)]

@@ -1,9 +1,9 @@
+use crate::cli::{AuditArgs, AuditCommands};
 use crate::errors::LeukoError;
 use crate::fetch_many_results;
 use crate::registry::parse_package_name_and_version;
 use crate::registry::types::MetaVersionResponse;
 use tokio::runtime;
-use crate::cli::{AuditArgs, AuditCommands}
 
 pub fn audit_package_file() -> Result<(), LeukoError> {
     Ok(())
@@ -33,9 +33,23 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
     Ok(())
 }
 
+fn test_audit_score_card(packages: &[String]) -> Result<(), LeukoError> {
+    let parsed_packages: Vec<(String, String)> = packages
+        .iter()
+        .map(|name| parse_package_name_and_version(name))
+        .collect();
+
+    for pkg in parsed_packages {
+        println!("{:?}", pkg);
+    }
+
+    Ok(())
+}
+
 pub fn run(args: AuditArgs) -> Result<(), LeukoError> {
     match args.command {
         Some(AuditCommands::Pkgs { packages }) => audit_packages(&packages),
+        Some(AuditCommands::Test { packages }) => test_audit_score_card(&packages),
         None => audit_package_file(),
     }
 }
