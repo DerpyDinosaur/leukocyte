@@ -1,8 +1,8 @@
 use crate::cli::{AuditArgs, AuditCommands};
 use crate::errors::LeukoError;
-use crate::fetch_many_results;
 use crate::registry::parse_package_name_and_version;
 use crate::registry::types::MetaVersionResponse;
+use crate::{BatchConfig, fetch_many_results};
 use tokio::runtime;
 
 pub fn audit_package_file() -> Result<(), LeukoError> {
@@ -21,7 +21,12 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
         .collect();
 
     let threaded_rt = runtime::Runtime::new().unwrap();
-    let results = threaded_rt.block_on(fetch_many_results::<MetaVersionResponse>(&urls, None));
+    let results = threaded_rt.block_on(fetch_many_results::<MetaVersionResponse>(
+        &urls,
+        BatchConfig {
+            ..BatchConfig::default()
+        },
+    ));
 
     for result in results {
         match result {
@@ -34,13 +39,26 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
 }
 
 fn test_audit_score_card(packages: &[String]) -> Result<(), LeukoError> {
+    /*
+        Score Card Ideas
+        - Maintainer count & account tenure
+        - Publish cadence (a dormant package suddenly publishing is a red flag)
+        - Presence of install scripts (preinstall/postinstall)
+        - Provenance attestation (npm/Sigstore signing present?)
+        - OpenSSF Scorecard rating
+        - Dependency count / bus factor
+    */
+
+    // struct PackageInfo {
+    //     maintainers
+    // }
     let parsed_packages: Vec<(String, String)> = packages
         .iter()
         .map(|name| parse_package_name_and_version(name))
         .collect();
 
     for pkg in parsed_packages {
-        println!("{:?}", pkg);
+        println!("{:?}", pkg.0);
     }
 
     Ok(())

@@ -1,4 +1,5 @@
 use futures::stream::{self, StreamExt};
+use reqwest::header::HeaderMap;
 use serde::de::DeserializeOwned;
 
 pub mod cli;
@@ -10,6 +11,23 @@ pub mod types;
 
 pub static SUPPORTED_PACKAGE_MANAGERS: [&str; 5] = ["bun", "leuko", "npm", "pnpm", "yarn"];
 pub static SUPPORTED_ADD_PACKAGE_CMDS: [&str; 4] = ["install", "i", "add", "a"];
+
+#[derive(Debug, Clone)]
+pub struct BatchConfig {
+    pub params: Vec<(String, String)>,
+    pub headers: HeaderMap,
+    pub concurrency: usize,
+}
+
+impl Default for BatchConfig {
+    fn default() -> Self {
+        Self {
+            params: Vec::new(),
+            headers: HeaderMap::new(),
+            concurrency: 15,
+        }
+    }
+}
 
 pub fn whatami(args: &Vec<String>) -> &str {
     /*
@@ -55,28 +73,39 @@ pub fn extract_packages(args: &[String]) -> Vec<String> {
     packages
 }
 
-pub async fn fetch_many_results<T: DeserializeOwned>(
+pub async fn fetch_many_results<T>(
     urls: &[String],
-    num: Option<usize>,
-) -> Vec<Result<T, reqwest::Error>> {
+    opts: BatchConfig,
+) -> Vec<Result<T, reqwest::Error>>
+where
+    T: DeserializeOwned,
+{
     /*
         Read page 541 for async
     */
     let client = reqwest::Client::new();
-    let concurrent = num.unwrap_or(20);
+    let BatchConfig {
+        params,
+        headers,
+        concurrency,
+    } = opts;
 
     stream::iter(urls.iter().cloned())
         .map(|url| {
-            let client = client.clone();
+            let client = &client;
+            let params = &params;
+            let headers = headers.clone();
+
             async move {
-                let result = client.get(&url).send().await;
+                let result = client.get(&url).query(params).headers(headers).send().await;
+
                 match result {
                     Ok(resp) => resp.json::<T>().await,
                     Err(e) => Err(e),
                 }
             }
         })
-        .buffer_unordered(concurrent)
+        .buffer_unordered(concurrency)
         .collect()
         .await
 }
