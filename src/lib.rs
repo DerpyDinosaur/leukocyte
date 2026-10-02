@@ -73,10 +73,7 @@ pub fn extract_packages(args: &[String]) -> Vec<String> {
     packages
 }
 
-pub async fn fetch_many_results<T>(
-    urls: &[String],
-    opts: BatchConfig,
-) -> Vec<Result<T, reqwest::Error>>
+pub async fn get_json_many<T>(urls: &[String], opts: BatchConfig) -> Vec<Result<T, reqwest::Error>>
 where
     T: DeserializeOwned,
 {

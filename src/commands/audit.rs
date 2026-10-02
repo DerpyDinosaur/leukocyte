@@ -2,7 +2,7 @@ use crate::cli::{AuditArgs, AuditCommands};
 use crate::errors::LeukoError;
 use crate::registry::parse_package_name_and_version;
 use crate::registry::types::MetaVersionResponse;
-use crate::{BatchConfig, fetch_many_results};
+use crate::{BatchConfig, get_json_many};
 use tokio::runtime;
 
 pub fn audit_package_file() -> Result<(), LeukoError> {
@@ -21,7 +21,7 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
         .collect();
 
     let threaded_rt = runtime::Runtime::new().unwrap();
-    let results = threaded_rt.block_on(fetch_many_results::<MetaVersionResponse>(
+    let results = threaded_rt.block_on(get_json_many::<MetaVersionResponse>(
         &urls,
         BatchConfig {
             ..BatchConfig::default()
