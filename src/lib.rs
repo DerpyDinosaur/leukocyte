@@ -73,6 +73,32 @@ pub fn extract_packages(args: &[String]) -> Vec<String> {
     packages
 }
 
+pub async fn big_fetch<T: DeserializeOwned>(
+    client: &reqwest::Client,
+    urls: &[String],
+    opts: &BatchConfig,
+) -> Vec<(String, Result<T, reqwest::Error>)> {
+    stream::iter(urls)
+        .map(|url| async move {
+            let res = async {
+                client
+                    .get(url)
+                    .query(&opts.params)
+                    .headers(opts.headers.clone())
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .json::<T>()
+                    .await
+            }
+            .await;
+            (url.clone(), res)
+        })
+        .buffered(opts.concurrency)
+        .collect()
+        .await
+}
+
 pub async fn get_json_many<T>(urls: &[String], opts: BatchConfig) -> Vec<Result<T, reqwest::Error>>
 where
     T: DeserializeOwned,
@@ -102,7 +128,7 @@ where
                 }
             }
         })
-        .buffer_unordered(concurrency)
+        .buffered(concurrency)
         .collect()
         .await
 }

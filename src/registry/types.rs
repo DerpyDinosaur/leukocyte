@@ -32,3 +32,9 @@ pub struct MetaVersionResponse {
     pub scripts: MetaScripts,
     pub maintainers: Vec<MetaMaintainers>,
 }
+
+// New
+// #[derive(Debug, Deserialize)]
+// pub struct Metadata {
+//     pub versions: HashMap<String, IgnoredAny>,
+// }

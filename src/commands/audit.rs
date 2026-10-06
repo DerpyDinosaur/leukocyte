@@ -1,8 +1,13 @@
+use std::collections::HashMap;
+
 use crate::cli::{AuditArgs, AuditCommands};
 use crate::errors::LeukoError;
 use crate::registry::parse_package_name_and_version;
 use crate::registry::types::MetaVersionResponse;
-use crate::{BatchConfig, get_json_many};
+use crate::{BatchConfig, big_fetch, get_json_many};
+use reqwest::header::{ACCEPT, HeaderValue};
+use serde::Deserialize;
+use serde::de::IgnoredAny;
 use tokio::runtime;
 
 pub fn audit_package_file() -> Result<(), LeukoError> {
@@ -49,16 +54,73 @@ fn test_audit_score_card(packages: &[String]) -> Result<(), LeukoError> {
         - Dependency count / bus factor
     */
 
-    // struct PackageInfo {
-    //     maintainers
-    // }
-    let parsed_packages: Vec<(String, String)> = packages
+    #[derive(Debug, Deserialize)]
+    struct NpmMetadata {
+        // name: String,
+        versions: HashMap<String, IgnoredAny>,
+    }
+
+    /*
+        If a user is using a pre-release skip the auditing -
+        process because that in of itself is a flight risk.
+    */
+
+    let targets: Vec<(String, String)> = packages
         .iter()
         .map(|name| parse_package_name_and_version(name))
         .collect();
 
-    for pkg in parsed_packages {
-        println!("{:?}", pkg.0);
+    let package_version_urls: Vec<String> = targets
+        .iter()
+        .map(|(name, version)| format!("https://registry.npmjs.org/{}/{}", name, version))
+        .collect();
+
+    let packument_urls: Vec<String> = targets
+        .iter()
+        .map(|(name, _)| format!("https://registry.npmjs.org/{}", name))
+        .collect();
+
+    let thread_rt = runtime::Runtime::new().unwrap();
+    let client = reqwest::Client::new();
+
+    let default_cfg = BatchConfig::default();
+    let abbreviate_response_cfg = {
+        let mut cfg = BatchConfig::default();
+        cfg.headers.insert(
+            ACCEPT,
+            HeaderValue::from_static("application/vnd.npm.install-v1+json"),
+        );
+        cfg
+    };
+
+    let (pkg_version, pkg_meta) = thread_rt.block_on(async {
+        tokio::join!(
+            big_fetch::<MetaVersionResponse>(&client, &package_version_urls, &default_cfg),
+            big_fetch::<NpmMetadata>(&client, &packument_urls, &abbreviate_response_cfg)
+        )
+    });
+
+    for ((url, version_res), (_, meta_res)) in pkg_version.iter().zip(&pkg_meta) {
+        let (doc, meta) = match (version_res, meta_res) {
+            (Ok(d), Ok(m)) => (d, m),
+            (Err(e), _) | (_, Err(e)) => {
+                eprintln!("error: {url}: {e}");
+                continue;
+            }
+        };
+
+        let mut package_version_list: Vec<&String> =
+            meta.versions.keys().filter(|s| !s.contains('-')).collect();
+        package_version_list.sort_by_key(|&a| std::cmp::Reverse(a));
+
+        let version_index = package_version_list
+            .iter()
+            .position(|v| **v == doc.version)
+            .map(|idx| idx + 1)
+            .unwrap_or(package_version_list.len() - 1);
+
+        println!("{}@{}", doc.name, doc.version);
+        println!("Previous Version: {}", package_version_list[version_index]);
     }
 
     Ok(())
