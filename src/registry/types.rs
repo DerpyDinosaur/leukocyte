@@ -1,4 +1,6 @@
-use serde::Deserialize;
+use std::collections::HashMap;
+
+use serde::{Deserialize, de::IgnoredAny};
 
 // Global
 
@@ -29,12 +31,15 @@ pub struct MetaScripts {
 pub struct MetaVersionResponse {
     pub name: String,
     pub version: String,
-    pub scripts: MetaScripts,
-    pub maintainers: Vec<MetaMaintainers>,
+    pub scripts: Option<MetaScripts>,
+    // pub maintainers: Vec<MetaMaintainers>,
 }
 
 // New
-// #[derive(Debug, Deserialize)]
-// pub struct Metadata {
-//     pub versions: HashMap<String, IgnoredAny>,
-// }
+#[derive(Debug, Deserialize)]
+pub struct NpmRegistryMeta {
+    pub name: String,
+    pub versions: HashMap<String, IgnoredAny>,
+    #[serde(rename = "dist-tags")]
+    pub dist: HashMap<String, String>,
+}

@@ -1,4 +1,4 @@
-mod npm;
+pub mod npm;
 pub mod types;
 
 pub fn parse_package_name_and_version(package: &str) -> (String, String) {
