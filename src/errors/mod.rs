@@ -17,8 +17,8 @@ pub enum LeukoError {
     UnsupportedPackageManager(String),
 
     /* Network errors */
-    #[error("Network request failed: {0}")]
-    Network(#[from] reqwest::Error),
+    #[error("Request failed: {0}")]
+    Http(#[from] reqwest::Error),
 
     /* Parsing Error */
     #[error("Failed to parse response: {0}")]
