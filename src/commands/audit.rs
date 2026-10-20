@@ -1,49 +1,29 @@
-use std::collections::HashMap;
-
-use crate::cli::{AuditArgs, AuditCommands};
+use crate::cli::{self, AuditArgs, AuditCommands, utils::muted};
 use crate::errors::LeukoError;
+use crate::registry::npm::get_package_registry_details;
 use crate::registry::parse_package_name_and_version;
-use crate::registry::types::MetaVersionResponse;
-use crate::{BatchConfig, big_fetch, get_json_many};
+use crate::registry::types::{MetaVersionResponse, NpmRegistryMeta};
+use crate::{BatchConfig, get_json_many};
+use console::style;
+use futures::stream::{self, StreamExt};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use owo_colors::OwoColorize;
+use reqwest::Request;
 use reqwest::header::{ACCEPT, HeaderValue};
-use serde::Deserialize;
-use serde::de::IgnoredAny;
+use std::fmt::format;
+use std::thread;
+use std::time::{Duration, Instant};
 use tokio::runtime;
+
+fn is_prerelease(version: &str) -> bool {
+    version.split('+').next().unwrap_or("").contains('-')
+}
 
 pub fn audit_package_file() -> Result<(), LeukoError> {
     Ok(())
 }
 
 pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
-    let parsed_packages: Vec<(String, String)> = packages
-        .iter()
-        .map(|name| parse_package_name_and_version(name))
-        .collect();
-
-    let urls: Vec<String> = parsed_packages
-        .iter()
-        .map(|(name, version)| format!("https://registry.npmjs.org/{}/{}", name, version))
-        .collect();
-
-    let threaded_rt = runtime::Runtime::new().unwrap();
-    let results = threaded_rt.block_on(get_json_many::<MetaVersionResponse>(
-        &urls,
-        BatchConfig {
-            ..BatchConfig::default()
-        },
-    ));
-
-    for result in results {
-        match result {
-            Ok(pkg) => println!("{} @ {}\n{:?}", pkg.name, pkg.version, pkg.scripts),
-            Err(err) => eprintln!("error: {}\n", err),
-        }
-    }
-
-    Ok(())
-}
-
-fn test_audit_score_card(packages: &[String]) -> Result<(), LeukoError> {
     /*
         Score Card Ideas
         - Maintainer count & account tenure
@@ -52,84 +32,121 @@ fn test_audit_score_card(packages: &[String]) -> Result<(), LeukoError> {
         - Provenance attestation (npm/Sigstore signing present?)
         - OpenSSF Scorecard rating
         - Dependency count / bus factor
+
+        ~ Performance time for running all packages togeather ~
+            - vite react drizzle-orm zod | Time average: 1.2s
+            - lodash typescript prettier eslint | Time average: 1.9s
+
+        ~ Performance time for running packages in paralelle ~
+            - vite react drizzle-orm zod | Time average: 4s
+            - lodash typescript prettier eslint | Time average: 4s
     */
 
-    #[derive(Debug, Deserialize)]
-    struct NpmMetadata {
-        // name: String,
-        versions: HashMap<String, IgnoredAny>,
-    }
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let client = reqwest::Client::new();
+    let mp = MultiProgress::new();
 
-    /*
-        If a user is using a pre-release skip the auditing -
-        process because that in of itself is a flight risk.
-    */
+    let header = mp.add(ProgressBar::new_spinner());
+    header.set_style(
+        ProgressStyle::with_template("{spinner} {msg}\n\n")
+            .unwrap()
+            .tick_strings(&cli::ui::SPINNER_CELL_SMALL),
+    );
+    header.set_message(format!("leuko is auditing {} packages", packages.len()));
+    header.enable_steady_tick(Duration::from_millis(100));
+
+    let plain_style = ProgressStyle::with_template("\t{msg}").unwrap();
 
     let targets: Vec<(String, String)> = packages
         .iter()
         .map(|name| parse_package_name_and_version(name))
         .collect();
 
-    let package_version_urls: Vec<String> = targets
+    let name_width = targets
         .iter()
-        .map(|(name, version)| format!("https://registry.npmjs.org/{}/{}", name, version))
-        .collect();
-
-    let packument_urls: Vec<String> = targets
+        .map(|p| p.0.chars().count())
+        .max()
+        .unwrap_or(0);
+    let version_width = targets
         .iter()
-        .map(|(name, _)| format!("https://registry.npmjs.org/{}", name))
-        .collect();
+        .map(|p| p.1.chars().count())
+        .max()
+        .unwrap_or(0);
 
-    let thread_rt = runtime::Runtime::new().unwrap();
-    let client = reqwest::Client::new();
+    let start = Instant::now();
+    let pkg_spinner_style = ProgressStyle::with_template(&format!("\t{{msg}}\t{{spinner:.cyan}}"))
+        .unwrap()
+        .tick_strings(&cli::ui::PROGRESS_DNA);
 
-    let default_cfg = BatchConfig::default();
-    let abbreviate_response_cfg = {
-        let mut cfg = BatchConfig::default();
-        cfg.headers.insert(
-            ACCEPT,
-            HeaderValue::from_static("application/vnd.npm.install-v1+json"),
-        );
-        cfg
-    };
+    let results: Vec<_> = rt.block_on(async {
+        stream::iter(targets)
+            .map(|(name, version)| {
+                let client = client.clone();
+                let mp = mp.clone();
+                let spinner_style = pkg_spinner_style.clone();
+                let plain_style = plain_style.clone();
+                async move {
+                    let pb = mp.add(ProgressBar::new_spinner());
+                    pb.set_tab_width(4);
+                    pb.set_style(spinner_style);
+                    pb.set_message(format!(
+                        "{:<w1$} {:<w2$}",
+                        name,
+                        version,
+                        w1 = name_width,
+                        w2 = version_width
+                    ));
+                    pb.enable_steady_tick(Duration::from_millis(80));
 
-    let (pkg_version, pkg_meta) = thread_rt.block_on(async {
-        tokio::join!(
-            big_fetch::<MetaVersionResponse>(&client, &package_version_urls, &default_cfg),
-            big_fetch::<NpmMetadata>(&client, &packument_urls, &abbreviate_response_cfg)
-        )
+                    // TODO: Add support for pre-release tags
+                    if is_prerelease(&version) {
+                        pb.set_style(plain_style);
+                        pb.finish_with_message(format!(
+                            "{:<w1$} {:<w2$}\t{}",
+                            name,
+                            version,
+                            style("pre-release/build tag not supported, skipping").yellow(),
+                            w1 = name_width,
+                            w2 = version_width
+                        ));
+                        return (name, None);
+                    }
+
+                    let res = get_package_registry_details(&client, &name, &version).await;
+
+                    let duration = Duration::from_secs(2);
+                    thread::sleep(duration);
+
+                    (name, Some(res))
+                }
+            })
+            .buffer_unordered(16)
+            .collect()
+            .await
     });
 
-    for ((url, version_res), (_, meta_res)) in pkg_version.iter().zip(&pkg_meta) {
-        let (doc, meta) = match (version_res, meta_res) {
-            (Ok(d), Ok(m)) => (d, m),
-            (Err(e), _) | (_, Err(e)) => {
-                eprintln!("error: {url}: {e}");
-                continue;
-            }
-        };
+    header.finish_and_clear();
+    mp.clear().ok();
 
-        let mut package_version_list: Vec<&String> =
-            meta.versions.keys().filter(|s| !s.contains('-')).collect();
-        package_version_list.sort_by_key(|&a| std::cmp::Reverse(a));
-
-        let version_index = package_version_list
-            .iter()
-            .position(|v| **v == doc.version)
-            .map(|idx| idx + 1)
-            .unwrap_or(package_version_list.len() - 1);
-
-        println!("{}@{}", doc.name, doc.version);
-        println!("Previous Version: {}", package_version_list[version_index]);
+    for result in results {
+        match result {
+            (name, Some(Ok(r))) => println!("{} Ok", name),
+            (name, None) => println!("{} No result", name),
+            (_, Some(Err(e))) => eprintln!("{} Error", e),
+        }
     }
 
+    Ok(())
+}
+
+fn sandbox(packages: &[String]) -> Result<(), LeukoError> {
     Ok(())
 }
 
 pub fn run(args: AuditArgs) -> Result<(), LeukoError> {
     match args.command {
         Some(AuditCommands::Pkgs { packages }) => audit_packages(&packages),
-        Some(AuditCommands::Test { packages }) => test_audit_score_card(&packages),
+        Some(AuditCommands::Test { packages }) => sandbox(&packages),
         None => audit_package_file(),
     }
 }
