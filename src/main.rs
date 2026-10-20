@@ -3,10 +3,6 @@ use leuko::cli::{Cli, Commands};
 use leuko::errors::{LeukoError, reporter};
 use leuko::{commands, shim};
 
-// TODO: Checkout Tabled crate
-// TODO: Checkout owo colours crate
-// TODO: Seperate code into different package managers
-
 fn main() {
     // Nom all arguments from environment
     let args = std::env::args().collect();
