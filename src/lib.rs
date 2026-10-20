@@ -1,6 +1,6 @@
 use futures::stream::{self, StreamExt};
-use reqwest::header::HeaderMap;
-use serde::de::DeserializeOwned;
+use reqwest::{Client, RequestBuilder, header::HeaderMap};
+use serde::{Serialize, de::DeserializeOwned};
 
 pub mod cli;
 pub mod commands;
@@ -73,62 +73,44 @@ pub fn extract_packages(args: &[String]) -> Vec<String> {
     packages
 }
 
-pub async fn big_fetch<T: DeserializeOwned>(
-    client: &reqwest::Client,
-    urls: &[String],
-    opts: &BatchConfig,
-) -> Vec<(String, Result<T, reqwest::Error>)> {
-    stream::iter(urls)
-        .map(|url| async move {
-            let res = async {
-                client
-                    .get(url)
-                    .query(&opts.params)
-                    .headers(opts.headers.clone())
-                    .send()
-                    .await?
-                    .error_for_status()?
-                    .json::<T>()
-                    .await
-            }
-            .await;
-            (url.clone(), res)
-        })
-        .buffered(opts.concurrency)
-        .collect()
-        .await
+/// Get single json request and parse into struct with serde, this is to provide flexibility
+/// in my request patterns for asynchronous small batches or to use it within get_json_many()
+/// and fetch loads while having flexibility on my options for params and headers.
+///
+/// Examples:
+/// ```
+/// // Empty query params and headers
+/// let a = get_json<DummyJSON>(client.get(url)).await?;
+/// // Batched
+/// let results = stream::iter(&urls)
+///    .map(|u| get_json<DummyJSON>(client.get(u).query(&params)))
+///    .buffer_unordered(8)
+///    .collect()
+///    .await;
+///```
+/// TODO: Implement a way to do the same flow for `get_json()` but with `get_json_many()`
+/// this way I can deprecate `BatchConfig` struct
+pub async fn get_json<T: DeserializeOwned>(req: RequestBuilder) -> Result<T, reqwest::Error> {
+    req.send().await?.error_for_status()?.json().await
 }
 
-pub async fn get_json_many<T>(urls: &[String], opts: BatchConfig) -> Vec<Result<T, reqwest::Error>>
+pub async fn get_json_many<T>(
+    client: &Client,
+    urls: &[String],
+    opts: BatchConfig,
+) -> Vec<Result<T, reqwest::Error>>
 where
     T: DeserializeOwned,
 {
-    /*
-        Read page 541 for async
-    */
-    let client = reqwest::Client::new();
     let BatchConfig {
         params,
         headers,
         concurrency,
     } = opts;
 
-    stream::iter(urls.iter().cloned())
-        .map(|url| {
-            let client = &client;
-            let params = &params;
-            let headers = headers.clone();
-
-            async move {
-                let result = client.get(&url).query(params).headers(headers).send().await;
-
-                match result {
-                    Ok(resp) => resp.json::<T>().await,
-                    Err(e) => Err(e),
-                }
-            }
-        })
-        .buffered(concurrency)
+    stream::iter(urls)
+        .map(|url| get_json::<T>(client.get(url).query(&params).headers(headers.clone())))
+        .buffered(concurrency.max(1))
         .collect()
         .await
 }
