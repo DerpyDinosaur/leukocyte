@@ -1,14 +1,9 @@
-use anyhow::Error;
-use owo_colors::OwoColorize;
 use reqwest::Client;
-use reqwest::header::{ACCEPT, CONTENT_TYPE, HeaderMap, HeaderValue};
-use serde::de::DeserializeOwned;
-use tokio::runtime;
+use reqwest::header::{ACCEPT, HeaderMap, HeaderValue};
 
+use crate::errors::LeukoError;
 use crate::get_json;
-use crate::{BatchConfig, errors::LeukoError};
 
-use super::parse_package_name_and_version;
 use super::types::{MetaVersionResponse, NpmRegistryMeta};
 
 pub async fn get_package_registry_details(

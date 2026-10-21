@@ -1,6 +1,6 @@
 use futures::stream::{self, StreamExt};
 use reqwest::{Client, RequestBuilder, header::HeaderMap};
-use serde::{Serialize, de::DeserializeOwned};
+use serde::de::DeserializeOwned;
 
 pub mod cli;
 pub mod commands;

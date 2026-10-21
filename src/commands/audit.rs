@@ -1,25 +1,23 @@
-use crate::cli::{self, AuditArgs, AuditCommands, utils::muted};
+use crate::cli::{self, AuditArgs, AuditCommands};
 use crate::errors::LeukoError;
 use crate::registry::npm::get_package_registry_details;
 use crate::registry::parse_package_name_and_version;
-use crate::registry::types::{MetaVersionResponse, NpmRegistryMeta};
-use crate::{BatchConfig, get_json_many};
 use console::style;
 use futures::stream::{self, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use owo_colors::OwoColorize;
-use reqwest::Request;
-use reqwest::header::{ACCEPT, HeaderValue};
-use std::fmt::format;
 use std::thread;
-use std::time::{Duration, Instant};
-use tokio::runtime;
+use std::time::Duration;
 
 fn is_prerelease(version: &str) -> bool {
     version.split('+').next().unwrap_or("").contains('-')
 }
 
 pub fn audit_package_file() -> Result<(), LeukoError> {
+    Ok(())
+}
+
+/// Final report output for when `audit_packages()` finishes
+fn _audit_packages_report() -> Result<(), LeukoError> {
     Ok(())
 }
 
@@ -73,7 +71,6 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
         .max()
         .unwrap_or(0);
 
-    let start = Instant::now();
     let pkg_spinner_style = ProgressStyle::with_template(&format!("\t{{msg}}\t{{spinner:.cyan}}"))
         .unwrap()
         .tick_strings(&cli::ui::PROGRESS_DNA);
@@ -130,7 +127,7 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
 
     for result in results {
         match result {
-            (name, Some(Ok(r))) => println!("{} Ok", name),
+            (name, Some(Ok(_))) => println!("{} Ok", name),
             (name, None) => println!("{} No result", name),
             (_, Some(Err(e))) => eprintln!("{} Error", e),
         }
@@ -139,7 +136,7 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
     Ok(())
 }
 
-fn sandbox(packages: &[String]) -> Result<(), LeukoError> {
+fn sandbox(_packages: &[String]) -> Result<(), LeukoError> {
     Ok(())
 }
 
