@@ -2,14 +2,85 @@ use crate::cli::{self, AuditArgs, AuditCommands};
 use crate::errors::LeukoError;
 use crate::registry::npm::get_package_registry_details;
 use crate::registry::parse_package_name_and_version;
+use crate::registry::types::{MetaVersionResponse, NpmRegistryMeta};
 use console::style;
 use futures::stream::{self, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::thread;
 use std::time::Duration;
 
+#[derive(Debug, PartialEq)]
+enum Severity {
+    Blocked,
+    High,
+    Medium,
+    Low,
+}
+
+struct FindingScoreRule {
+    min: u8,
+    max: u8,
+    weight: f32,
+    inverse: bool,
+}
+
+#[derive(Debug)]
+struct Finding {
+    label: String,
+    message: String,
+    severity: Severity,
+}
+
+#[derive(Debug)]
+struct Audit {
+    name: String,
+    version: String,
+    score: u8,
+    findings: Vec<Finding>,
+}
+
 fn is_prerelease(version: &str) -> bool {
     version.split('+').next().unwrap_or("").contains('-')
+}
+
+fn finding_maintainer() {
+    const RULE: FindingScoreRule = FindingScoreRule {
+        min: 0,
+        max: 1,
+        weight: 0.1,
+        inverse: true,
+    };
+}
+
+fn audit(
+    meta: &NpmRegistryMeta,
+    version: &MetaVersionResponse,
+    previous_version: &MetaVersionResponse,
+) -> Audit {
+    let mut result: Audit = Audit {
+        name: version.name.to_string(),
+        version: version.version.to_string(),
+        score: 0,
+        findings: Vec::new(),
+    };
+
+    // Scripts
+    if let Some(scripts) = &version.scripts {
+        if let Some(message) = scripts
+            .preinstall
+            .as_deref()
+            .or(scripts.install.as_deref())
+            .or(scripts.postinstall.as_deref())
+        {
+            result.findings.push(Finding {
+                label: String::from("scripts"),
+                message: message.to_string(),
+                severity: Severity::Blocked,
+            });
+        }
+    }
+
+    result
 }
 
 pub fn audit_package_file() -> Result<(), LeukoError> {
@@ -19,6 +90,32 @@ pub fn audit_package_file() -> Result<(), LeukoError> {
 /// Final report output for when `audit_packages()` finishes
 fn _audit_packages_report() -> Result<(), LeukoError> {
     Ok(())
+}
+
+async fn reveal(pb: &ProgressBar) {
+    const BAR_WIDTH: usize = 10;
+    const FRAMES: u64 = 16;
+    const FRAME_DELAY: Duration = Duration::from_millis(30);
+
+    let style = ProgressStyle::with_template(&format!(
+        "\t{{msg}}\t{{bar:{BAR_WIDTH}.green/240}} {{pos:>3}}"
+    ))
+    .expect("reveal template is valid")
+    // Hover for tool-tip this takes 3 chars as the following
+    // (filled, current, to do)
+    .progress_chars("⣿⡇⣿");
+
+    pb.set_length(100);
+    pb.set_position(0);
+    pb.set_style(style);
+
+    for f in 1..=FRAMES {
+        pb.set_position(100 * f / FRAMES);
+        tokio::time::sleep(FRAME_DELAY).await;
+    }
+    // This keeps the current message in progress while waiting for others
+    // As opposed to finish_with_message which would complete instantly
+    pb.abandon();
 }
 
 pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
@@ -65,6 +162,7 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
         .map(|p| p.0.chars().count())
         .max()
         .unwrap_or(0);
+
     let version_width = targets
         .iter()
         .map(|p| p.1.chars().count())
@@ -89,7 +187,7 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
                     pb.set_message(format!(
                         "{:<w1$} {:<w2$}",
                         name,
-                        version,
+                        &version,
                         w1 = name_width,
                         w2 = version_width
                     ));
@@ -101,7 +199,7 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
                         pb.finish_with_message(format!(
                             "{:<w1$} {:<w2$}\t{}",
                             name,
-                            version,
+                            &version,
                             style("pre-release/build tag not supported, skipping").yellow(),
                             w1 = name_width,
                             w2 = version_width
@@ -110,11 +208,22 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
                     }
 
                     let res = get_package_registry_details(&client, &name, &version).await;
+                    // TODO: Implement auditing
+                    let package_audit = match &res {
+                        Ok((m, v, pv)) => audit(m, v, pv),
+                        Err(_) => Audit {
+                            name: name.to_string(),
+                            version: version.to_string(),
+                            score: 0,
+                            findings: Vec::new(),
+                        },
+                    };
+                    reveal(&pb).await;
 
-                    let duration = Duration::from_secs(2);
-                    thread::sleep(duration);
+                    // DELETE: This is for viewing animations while designing
+                    tokio::time::sleep(Duration::from_secs(1)).await;
 
-                    (name, Some(res))
+                    (name, Some(package_audit))
                 }
             })
             .buffer_unordered(16)
@@ -126,11 +235,7 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
     mp.clear().ok();
 
     for result in results {
-        match result {
-            (name, Some(Ok(_))) => println!("{} Ok", name),
-            (name, None) => println!("{} No result", name),
-            (_, Some(Err(e))) => eprintln!("{} Error", e),
-        }
+        println!("{:?}", result);
     }
 
     Ok(())
@@ -145,6 +250,60 @@ pub fn run(args: AuditArgs) -> Result<(), LeukoError> {
         Some(AuditCommands::Pkgs { packages }) => audit_packages(&packages),
         Some(AuditCommands::Test { packages }) => sandbox(&packages),
         None => audit_package_file(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::registry::types::MetaScripts;
+    use serde::de::IgnoredAny;
+    use std::collections::HashMap;
+
+    use super::*;
+
+    #[test]
+    fn audit_scripts_finding() {
+        let name = String::from("test");
+        let version_string = String::from("1.0.0");
+        let previous_version_string = String::from("0.1.0");
+        let mut versions = HashMap::new();
+        versions.insert(version_string.clone(), IgnoredAny);
+        versions.insert(previous_version_string.clone(), IgnoredAny);
+        let mut dist = HashMap::new();
+
+        let meta: NpmRegistryMeta = NpmRegistryMeta {
+            name: name.clone(),
+            versions,
+            dist,
+        };
+        let version: MetaVersionResponse = MetaVersionResponse {
+            name: name.clone(),
+            version: version_string.clone(),
+            scripts: Some(MetaScripts {
+                install: Some(String::from("install")),
+                postinstall: Some(String::new()),
+                preinstall: None,
+            }),
+        };
+        let previous_version: MetaVersionResponse = MetaVersionResponse {
+            name: name.clone(),
+            version: previous_version_string.clone(),
+            scripts: Some(MetaScripts {
+                install: Some(String::new()),
+                postinstall: Some(String::new()),
+                preinstall: Some(String::new()),
+            }),
+        };
+
+        let result = audit(&meta, &version, &previous_version);
+        let findings = &result.findings;
+
+        assert_eq!(findings.len(), 1);
+
+        let script_finding = &findings[0];
+        assert_eq!(script_finding.label, "scripts");
+        assert_eq!(script_finding.message, "install");
+        assert_eq!(script_finding.severity, Severity::Blocked);
     }
 }
 
