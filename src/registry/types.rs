@@ -32,7 +32,7 @@ pub struct MetaScripts {
 pub struct MetaVersionResponse {
     pub name: String,
     pub version: String,
-    pub scripts: Option<MetaScripts>,
+    pub scripts: Option<HashMap<String, String>>,
     // pub maintainers: Vec<MetaMaintainers>,
 }
 

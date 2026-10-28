@@ -22,5 +22,5 @@ console = "0.16.6"
 # linker = "x86_64-w64-mingw32-gcc"
 
 [lints.rust]
-# unused = "allow"
-# dead_code = "allow"
+unused = "allow"
+dead_code = "allow"

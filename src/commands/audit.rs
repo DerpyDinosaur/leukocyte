@@ -57,6 +57,15 @@ fn audit(
     version: &MetaVersionResponse,
     previous_version: &MetaVersionResponse,
 ) -> Audit {
+    /*
+        Audit Ideas
+        - Maintainer count & account tenure
+        - Publish cadence (a dormant package suddenly publishing is a red flag)
+        - Presence of install scripts (preinstall/postinstall)
+        - Provenance attestation (npm/Sigstore signing present?)
+        - OpenSSF Scorecard rating
+        - Dependency count / bus factor
+    */
     let mut result: Audit = Audit {
         name: version.name.to_string(),
         version: version.version.to_string(),
@@ -64,17 +73,16 @@ fn audit(
         findings: Vec::new(),
     };
 
-    // Scripts
+    // Script Finding
     if let Some(scripts) = &version.scripts {
-        if let Some(message) = scripts
-            .preinstall
-            .as_deref()
-            .or(scripts.install.as_deref())
-            .or(scripts.postinstall.as_deref())
-        {
+        let first = ["preinstall", "install", "postinstall"]
+            .iter()
+            .find_map(|&name| scripts.get(name).map(|script| (name, script)));
+
+        if let Some((name, script)) = first {
             result.findings.push(Finding {
-                label: String::from("scripts"),
-                message: message.to_string(),
+                label: "scripts".to_string(),
+                message: format!("{name}: {script}"),
                 severity: Severity::Blocked,
             });
         }
@@ -119,24 +127,6 @@ async fn reveal(pb: &ProgressBar) {
 }
 
 pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
-    /*
-        Score Card Ideas
-        - Maintainer count & account tenure
-        - Publish cadence (a dormant package suddenly publishing is a red flag)
-        - Presence of install scripts (preinstall/postinstall)
-        - Provenance attestation (npm/Sigstore signing present?)
-        - OpenSSF Scorecard rating
-        - Dependency count / bus factor
-
-        ~ Performance time for running all packages togeather ~
-            - vite react drizzle-orm zod | Time average: 1.2s
-            - lodash typescript prettier eslint | Time average: 1.9s
-
-        ~ Performance time for running packages in paralelle ~
-            - vite react drizzle-orm zod | Time average: 4s
-            - lodash typescript prettier eslint | Time average: 4s
-    */
-
     let rt = tokio::runtime::Runtime::new().unwrap();
     let client = reqwest::Client::new();
     let mp = MultiProgress::new();
@@ -270,6 +260,8 @@ mod tests {
         versions.insert(version_string.clone(), IgnoredAny);
         versions.insert(previous_version_string.clone(), IgnoredAny);
         let mut dist = HashMap::new();
+        let mut scripts = HashMap::new();
+        scripts.insert(String::from("install"), String::from("node install.js"));
 
         let meta: NpmRegistryMeta = NpmRegistryMeta {
             name: name.clone(),
@@ -279,20 +271,12 @@ mod tests {
         let version: MetaVersionResponse = MetaVersionResponse {
             name: name.clone(),
             version: version_string.clone(),
-            scripts: Some(MetaScripts {
-                install: Some(String::from("install")),
-                postinstall: Some(String::new()),
-                preinstall: None,
-            }),
+            scripts: Some(scripts),
         };
         let previous_version: MetaVersionResponse = MetaVersionResponse {
             name: name.clone(),
             version: previous_version_string.clone(),
-            scripts: Some(MetaScripts {
-                install: Some(String::new()),
-                postinstall: Some(String::new()),
-                preinstall: Some(String::new()),
-            }),
+            scripts: None,
         };
 
         let result = audit(&meta, &version, &previous_version);
@@ -302,7 +286,7 @@ mod tests {
 
         let script_finding = &findings[0];
         assert_eq!(script_finding.label, "scripts");
-        assert_eq!(script_finding.message, "install");
+        assert_eq!(script_finding.message, "install: node install.js");
         assert_eq!(script_finding.severity, Severity::Blocked);
     }
 }
