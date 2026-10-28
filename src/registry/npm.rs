@@ -22,31 +22,37 @@ pub async fn get_package_registry_details(
     );
 
     // Runs both requests concurrently; returns early on the first error.
-    let (meta, ver) = tokio::try_join!(
+    let (meta_res, version_res) = tokio::try_join!(
         get_json::<NpmRegistryMeta>(client.get(&packument_url).headers(headers)),
         get_json::<MetaVersionResponse>(client.get(&version_url)),
     )?;
 
-    let verver = get_json::<MetaVersionResponse>(client.get(&version_url)).await?;
+    let mut package_version_list: Vec<&String> = meta_res
+        .versions
+        .keys()
+        .filter(|v| !v.contains('-') || !v.contains('+'))
+        .collect();
+    package_version_list.sort_by_key(|v| {
+        v.split('.')
+            .map(|s| s.parse::<u32>().unwrap_or(0))
+            .collect::<Vec<u32>>()
+    });
 
-    /*
-        Code for getting previous package version
-    */
-    // let mut package_version_list: Vec<&String> =
-    //     meta.versions.keys().filter(|s| !s.contains('-')).collect();
-    // package_version_list.sort_by_key(|v| {
-    //     v.split('.')
-    //         .map(|s| s.parse::<u32>().unwrap_or(0))
-    //         .collect::<Vec<u32>>()
-    // });
+    let previous_version_index = package_version_list
+        .iter()
+        .position(|v| **v == version_res.version)
+        .map(|v| v - 1)
+        .unwrap_or(package_version_list.len() - 1);
 
-    // let version_index = package_version_list
-    //     .iter()
-    //     .position(|v| **v == doc.version)
-    //     .map(|v| v - 1)
-    //     .unwrap_or(package_version_list.len() - 1);
+    let previous_version_url = format!(
+        "https://registry.npmjs.org/{encoded}/{}",
+        package_version_list[previous_version_index]
+    );
 
-    Ok((meta, ver, verver))
+    let previous_version_res =
+        get_json::<MetaVersionResponse>(client.get(&previous_version_url)).await?;
+
+    Ok((meta_res, version_res, previous_version_res))
 }
 
 // #[cfg(test)]

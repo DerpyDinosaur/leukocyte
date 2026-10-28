@@ -20,6 +20,7 @@ pub struct MetaResponse {
 
 // Meta Versioned Response
 
+/// Declared script strings that are known to be problematic.
 #[derive(Debug, Deserialize)]
 pub struct MetaScripts {
     pub preinstall: Option<String>,
