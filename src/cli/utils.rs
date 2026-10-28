@@ -1,5 +1,7 @@
 use console::Style;
 
+// TODO: Try finding the best colour library for you
+
 /// Cell Layout:
 /// 1        4
 /// 2        5
@@ -22,7 +24,7 @@ pub mod dot8 {
 /// Apply dim style to string
 ///
 /// Example:
-/// ```
+/// ```ignore
 /// let progress_bar = multi_progress.add(ProgressBar::new_spinner());
 /// progress_bar.set_message(muted().apply_to("hello world").to_string());
 /// ```

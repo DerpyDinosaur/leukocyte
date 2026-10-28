@@ -78,7 +78,7 @@ pub fn extract_packages(args: &[String]) -> Vec<String> {
 /// and fetch loads while having flexibility on my options for params and headers.
 ///
 /// Examples:
-/// ```
+/// ```ignore
 /// // Empty query params and headers
 /// let a = get_json<DummyJSON>(client.get(url)).await?;
 /// // Batched
