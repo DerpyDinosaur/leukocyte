@@ -37,7 +37,7 @@ pub struct MetaVersionResponse {
 }
 
 // New
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct NpmRegistryMeta {
     pub name: String,
     pub versions: HashMap<String, IgnoredAny>,
@@ -46,7 +46,7 @@ pub struct NpmRegistryMeta {
     pub time: HashMap<String, String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct NpmRegistryVersion {
     pub name: String,
     pub version: String,

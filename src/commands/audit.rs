@@ -19,6 +19,7 @@ enum Severity {
 }
 
 struct FindingScoreRule {
+    value: u8,
     min: u8,
     max: u8,
     weight: f32,
@@ -44,15 +45,6 @@ fn is_prerelease(version: &str) -> bool {
     version.split('+').next().unwrap_or("").contains('-')
 }
 
-fn finding_maintainer() {
-    const RULE: FindingScoreRule = FindingScoreRule {
-        min: 0,
-        max: 1,
-        weight: 0.1,
-        inverse: true,
-    };
-}
-
 fn audit(
     meta: &NpmRegistryMeta,
     version: &NpmRegistryVersion,
@@ -67,41 +59,90 @@ fn audit(
         - [x] Package Age
         - [x] Dependency count / bus factor
         - [x] Presence of install scripts (preinstall/postinstall)
+
+        Implement
+        min-max normalization for score
+        https://en.wikipedia.org/wiki/Weighted_arithmetic_mean
     */
     let mut result: Audit = Audit {
         name: version.name.to_string(),
         version: version.version.to_string(),
-        score: 0,
+        score: 100,
         findings: Vec::new(),
     };
 
-    // Scripts
-    if let Some(scripts) = &version.scripts {
+    let mut scores: Vec<FindingScoreRule> = Vec::new();
+
+    'scripts_finding: {
+        let mut rule = FindingScoreRule {
+            value: 0,
+            min: 0,
+            max: 1,
+            weight: 0.7,
+            inverse: true,
+        };
+
+        let Some(scripts) = &version.scripts else {
+            scores.push(rule);
+            break 'scripts_finding;
+        };
+
         let first = ["preinstall", "install", "postinstall"]
             .iter()
             .find_map(|&name| scripts.get(name).map(|script| (name, script)));
 
-        if let Some((name, script)) = first {
-            result.findings.push(Finding {
-                label: "scripts".to_string(),
-                message: format!("{name}: {script}"),
-                severity: Severity::Blocked,
-            });
-        }
+        let Some((name, script)) = first else {
+            scores.push(rule);
+            break 'scripts_finding;
+        };
+
+        result.findings.push(Finding {
+            label: "scripts".to_string(),
+            message: format!("{name}: {script}"),
+            severity: Severity::Blocked,
+        });
+
+        scores.push(rule);
     }
 
-    // Dependancies
-    if let Some(dependancies) = &version.dependancies {
+    'dependancies_finding: {
+        let mut rule: FindingScoreRule = FindingScoreRule {
+            value: 0,
+            min: 0,
+            max: 1,
+            weight: 0.1,
+            inverse: true,
+        };
+
+        let Some(dependancies) = &version.dependancies else {
+            scores.push(rule);
+            break 'dependancies_finding;
+        };
+
         let count_of_depends = dependancies.iter().count();
+
         result.findings.push(Finding {
             label: "dependencies".to_string(),
             message: format!("{}", count_of_depends),
             severity: Severity::Low,
-        })
+        });
+
+        scores.push(rule);
     }
 
-    // Age
-    if let Some(date_created) = &meta.time.get(&version.version) {
+    'age_finding: {
+        let mut rule: FindingScoreRule = FindingScoreRule {
+            value: 0,
+            min: 0,
+            max: 42,
+            weight: 0.2,
+            inverse: true,
+        };
+        let Some(date_created) = &meta.time.get(&version.version) else {
+            scores.push(rule);
+            break 'age_finding;
+        };
+
         let date_created = DateTime::parse_from_rfc3339(date_created)
             .unwrap()
             .with_timezone(&Utc);
@@ -117,9 +158,27 @@ fn audit(
             result.findings.push(Finding {
                 label: "age".to_string(),
                 message: "version was released this week".to_string(),
-                severity: Severity::Low,
+                severity: Severity::High,
+            })
+        } else if elapsed_days < 42 {
+            result.findings.push(Finding {
+                label: "age".to_string(),
+                message: "version was less than 42 days".to_string(),
+                severity: Severity::Medium,
             })
         }
+
+        scores.push(rule);
+    }
+
+    #[cfg(test)]
+    {
+        let total: f32 = scores.iter().map(|s| s.weight).sum();
+        assert!(
+            total == 1.0,
+            "score weights sum to {total}, expected 1.0 ({} rules)",
+            scores.len()
+        );
     }
 
     result
@@ -134,7 +193,7 @@ fn _audit_packages_report() -> Result<(), LeukoError> {
     Ok(())
 }
 
-async fn reveal(pb: &ProgressBar) {
+async fn reveal(pb: &ProgressBar, score: u8) {
     const BAR_WIDTH: usize = 10;
     const FRAMES: u64 = 16;
     const FRAME_DELAY: Duration = Duration::from_millis(30);
@@ -152,7 +211,7 @@ async fn reveal(pb: &ProgressBar) {
     pb.set_style(style);
 
     for f in 1..=FRAMES {
-        pb.set_position(100 * f / FRAMES);
+        pb.set_position(u64::from(score) * f / FRAMES);
         tokio::time::sleep(FRAME_DELAY).await;
     }
     // This keeps the current message in progress while waiting for others
@@ -235,14 +294,17 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
                     // TODO: Implement auditing
                     let package_audit = match &res {
                         Ok((m, v, pv)) => audit(m, v, pv),
-                        Err(_) => Audit {
-                            name: name.to_string(),
-                            version: version.to_string(),
-                            score: 0,
-                            findings: Vec::new(),
-                        },
+                        Err(e) => {
+                            pb.finish_with_message(format!("{:?}", e));
+                            Audit {
+                                name: name.to_string(),
+                                version: version.to_string(),
+                                score: 0,
+                                findings: Vec::new(),
+                            }
+                        }
                     };
-                    reveal(&pb).await;
+                    reveal(&pb, package_audit.score).await;
 
                     // DELETE: This is for viewing animations while designing
                     tokio::time::sleep(Duration::from_secs(1)).await;
@@ -342,6 +404,14 @@ mod tests {
         assert_eq!(script_finding.label, "scripts");
         assert_eq!(script_finding.message, "install: node install.js");
         assert_eq!(script_finding.severity, Severity::Blocked);
+    }
+
+    #[test]
+    fn audit_score_weights_sum_to_one() {
+        let meta = NpmRegistryMeta::default();
+        let version = NpmRegistryVersion::default();
+        let previous = NpmRegistryVersion::default();
+        audit(&meta, &version, &previous);
     }
 }
 
