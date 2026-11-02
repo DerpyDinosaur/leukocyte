@@ -23,7 +23,7 @@ pub async fn get_package_registry_details(
 
     // Runs both requests concurrently; returns early on the first error.
     let (meta_res, version_res) = tokio::try_join!(
-        get_json::<NpmRegistryMeta>(client.get(&packument_url).headers(headers)),
+        get_json::<NpmRegistryMeta>(client.get(&packument_url)),
         get_json::<NpmRegistryVersion>(client.get(&version_url)),
     )?;
 
