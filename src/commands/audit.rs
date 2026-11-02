@@ -2,7 +2,8 @@ use crate::cli::{self, AuditArgs, AuditCommands};
 use crate::errors::LeukoError;
 use crate::registry::npm::get_package_registry_details;
 use crate::registry::parse_package_name_and_version;
-use crate::registry::types::{MetaVersionResponse, NpmRegistryMeta};
+use crate::registry::types::{MetaVersionResponse, NpmRegistryMeta, NpmRegistryVersion};
+use chrono::{DateTime, Utc};
 use console::style;
 use futures::stream::{self, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -54,17 +55,18 @@ fn finding_maintainer() {
 
 fn audit(
     meta: &NpmRegistryMeta,
-    version: &MetaVersionResponse,
-    previous_version: &MetaVersionResponse,
+    version: &NpmRegistryVersion,
+    previous_version: &NpmRegistryVersion,
 ) -> Audit {
     /*
         Audit Ideas
-        - Maintainer count & account tenure
-        - Publish cadence (a dormant package suddenly publishing is a red flag)
-        - Presence of install scripts (preinstall/postinstall)
-        - Provenance attestation (npm/Sigstore signing present?)
-        - OpenSSF Scorecard rating
-        - Dependency count / bus factor
+        - [ ] Maintainer count & account tenure
+        - [ ] Publish cadence (a dormant package suddenly publishing is a red flag)
+        - [ ] Provenance attestation (npm/Sigstore signing present?)
+        - [ ] OpenSSF Scorecard rating
+        - [x] Package Age
+        - [x] Dependency count / bus factor
+        - [x] Presence of install scripts (preinstall/postinstall)
     */
     let mut result: Audit = Audit {
         name: version.name.to_string(),
@@ -73,7 +75,7 @@ fn audit(
         findings: Vec::new(),
     };
 
-    // Script Finding
+    // Scripts
     if let Some(scripts) = &version.scripts {
         let first = ["preinstall", "install", "postinstall"]
             .iter()
@@ -85,6 +87,38 @@ fn audit(
                 message: format!("{name}: {script}"),
                 severity: Severity::Blocked,
             });
+        }
+    }
+
+    // Dependancies
+    if let Some(dependancies) = &version.dependancies {
+        let count_of_depends = dependancies.iter().count();
+        result.findings.push(Finding {
+            label: "dependencies".to_string(),
+            message: format!("{}", count_of_depends),
+            severity: Severity::Low,
+        })
+    }
+
+    // Age
+    if let Some(date_created) = &meta.time.get(&version.version) {
+        let date_created = DateTime::parse_from_rfc3339(date_created)
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let elapsed_days = (Utc::now() - date_created).num_days();
+        if elapsed_days < 3 {
+            result.findings.push(Finding {
+                label: "age".to_string(),
+                message: "version is too new".to_string(),
+                severity: Severity::Blocked,
+            })
+        } else if elapsed_days < 7 {
+            result.findings.push(Finding {
+                label: "age".to_string(),
+                message: "version was released this week".to_string(),
+                severity: Severity::Low,
+            })
         }
     }
 
@@ -256,10 +290,23 @@ mod tests {
         let name = String::from("test");
         let version_string = String::from("1.0.0");
         let previous_version_string = String::from("0.1.0");
+
         let mut versions = HashMap::new();
         versions.insert(version_string.clone(), IgnoredAny);
         versions.insert(previous_version_string.clone(), IgnoredAny);
+
         let mut dist = HashMap::new();
+
+        let mut time = HashMap::new();
+        time.insert(
+            "modified".to_string(),
+            "2000-01-01T00:00:00.000Z".to_string(),
+        );
+        time.insert(
+            version_string.clone(),
+            "2000-01-01T00:00:00.000Z".to_string(),
+        );
+
         let mut scripts = HashMap::new();
         scripts.insert(String::from("install"), String::from("node install.js"));
 
@@ -267,16 +314,23 @@ mod tests {
             name: name.clone(),
             versions,
             dist,
+            time,
         };
-        let version: MetaVersionResponse = MetaVersionResponse {
+        let version: NpmRegistryVersion = NpmRegistryVersion {
             name: name.clone(),
             version: version_string.clone(),
             scripts: Some(scripts),
+            dependancies: None,
+            dev_dependancies: None,
+            peer_dependancies: None,
         };
-        let previous_version: MetaVersionResponse = MetaVersionResponse {
+        let previous_version: NpmRegistryVersion = NpmRegistryVersion {
             name: name.clone(),
             version: previous_version_string.clone(),
             scripts: None,
+            dependancies: None,
+            dev_dependancies: None,
+            peer_dependancies: None,
         };
 
         let result = audit(&meta, &version, &previous_version);

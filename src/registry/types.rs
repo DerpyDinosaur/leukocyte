@@ -43,4 +43,17 @@ pub struct NpmRegistryMeta {
     pub versions: HashMap<String, IgnoredAny>,
     #[serde(rename = "dist-tags")]
     pub dist: HashMap<String, String>,
+    pub time: HashMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NpmRegistryVersion {
+    pub name: String,
+    pub version: String,
+    pub scripts: Option<HashMap<String, String>>,
+    pub dependancies: Option<HashMap<String, String>>,
+    #[serde(rename = "devDependancies")]
+    pub dev_dependancies: Option<HashMap<String, String>>,
+    #[serde(rename = "peerDependancies")]
+    pub peer_dependancies: Option<HashMap<String, String>>,
 }

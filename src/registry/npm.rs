@@ -4,13 +4,13 @@ use reqwest::header::{ACCEPT, HeaderMap, HeaderValue};
 use crate::errors::LeukoError;
 use crate::get_json;
 
-use super::types::{MetaVersionResponse, NpmRegistryMeta};
+use super::types::{NpmRegistryMeta, NpmRegistryVersion};
 
 pub async fn get_package_registry_details(
     client: &Client,
     name: &str,
     version: &str,
-) -> Result<(NpmRegistryMeta, MetaVersionResponse, MetaVersionResponse), LeukoError> {
+) -> Result<(NpmRegistryMeta, NpmRegistryVersion, NpmRegistryVersion), LeukoError> {
     // Scoped packages: "@scope/pkg" -> "@scope%2fpkg"
     let encoded = name.replace('/', "%2f");
     let packument_url = format!("https://registry.npmjs.org/{encoded}");
@@ -24,7 +24,7 @@ pub async fn get_package_registry_details(
     // Runs both requests concurrently; returns early on the first error.
     let (meta_res, version_res) = tokio::try_join!(
         get_json::<NpmRegistryMeta>(client.get(&packument_url).headers(headers)),
-        get_json::<MetaVersionResponse>(client.get(&version_url)),
+        get_json::<NpmRegistryVersion>(client.get(&version_url)),
     )?;
 
     let mut package_version_list: Vec<&String> = meta_res
@@ -50,7 +50,7 @@ pub async fn get_package_registry_details(
     );
 
     let previous_version_res =
-        get_json::<MetaVersionResponse>(client.get(&previous_version_url)).await?;
+        get_json::<NpmRegistryVersion>(client.get(&previous_version_url)).await?;
 
     Ok((meta_res, version_res, previous_version_res))
 }
