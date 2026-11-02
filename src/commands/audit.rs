@@ -348,6 +348,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn audit_pkgs_supports_all_install_notations() {
+        /*
+            npm install                         # Install all deps from package.json (also: npm i)
+            npm install <pkg>                   # Install latest version
+            npm install <pkg>@1.2.3             # Specific version
+            npm install <pkg>@">=1.2.3 <2.0.0"  # Version range
+            npm install <pkg>@latest            # Explicitly latest tag
+            npm install <pkg>@next              # 'next' dist-tag (beta/RC)
+        */
+        let packages = [
+            "vite",
+            "vite@1.0.0",
+            "vite@^1.0.0",
+            "vite@>=1.2.3 <2.0.0",
+            "vite@latest",
+            "vite@rc-beta",
+            "@types/node",
+        ]
+        .map(str::to_string)
+        .to_vec();
+        let result = audit_packages(&packages);
+        let is_ok = result.is_ok();
+        if is_ok {
+            assert!(is_ok);
+        } else {
+            println!("{:?}", &result.err());
+            assert!(!is_ok);
+        }
+    }
+
+    #[test]
     fn audit_scripts_finding() {
         let name = String::from("test");
         let version_string = String::from("1.0.0");
@@ -414,39 +445,3 @@ mod tests {
         audit(&meta, &version, &previous);
     }
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-
-//     #[tokio::test]
-//     async fn supports_all_package_install_syntax() {
-//         /*
-//             npm install                         # Install all deps from package.json (also: npm i)
-//             npm install <pkg>                   # Install latest version
-//             npm install <pkg>@1.2.3             # Specific version
-//             npm install <pkg>@">=1.2.3 <2.0.0"  # Version range
-//             npm install <pkg>@latest            # Explicitly latest tag
-//             npm install <pkg>@next              # 'next' dist-tag (beta/RC)
-//         */
-//         let packages = [
-//             "vite",
-//             "vite@1.0.0",
-//             "vite@^1.0.0",
-//             "vite@>=1.2.3 <2.0.0",
-//             "vite@latest",
-//             "vite@next",
-//             "@types/node",
-//         ]
-//         .map(str::to_string)
-//         .to_vec();
-//         let result = run(&packages);
-//         let is_ok = result.await.is_ok();
-//         if is_ok {
-//             assert!(is_ok);
-//         } else {
-//             // println!("{:?}", &result.err());
-//             assert!(!is_ok);
-//         }
-//     }
-// }
