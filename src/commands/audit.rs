@@ -101,8 +101,8 @@ fn audit(
         };
 
         result.findings.push(Finding {
-            label: "scripts".to_string(),
-            message: format!("{name}: {script}"),
+            label: String::from("scripts"),
+            message: format!("{}: {}", name, script),
             severity: Severity::Blocked,
         });
 
@@ -142,11 +142,8 @@ fn audit(
             weight: 0.2,
             inverse: false,
         };
-        let Some(date_created) = &meta.time.get(&version.version) else {
-            scores.push(rule);
-            break 'age_finding;
-        };
 
+        let date_created = &meta.modified;
         let date_created: jiff::Timestamp = match date_created.parse() {
             Ok(d) => d,
             Err(e) => {
@@ -378,7 +375,7 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
                     reveal(&pb, package_audit.score).await;
 
                     // DELETE: This is for viewing animations while designing
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    // tokio::time::sleep(Duration::from_secs(5)).await;
 
                     (name, Some(package_audit))
                 }
@@ -473,16 +470,7 @@ mod tests {
         versions.insert(previous_version_string.clone(), IgnoredAny);
 
         let mut dist = HashMap::new();
-
-        let mut time = HashMap::new();
-        time.insert(
-            "modified".to_string(),
-            "2000-01-01T00:00:00.000Z".to_string(),
-        );
-        time.insert(
-            version_string.clone(),
-            "2000-01-01T00:00:00.000Z".to_string(),
-        );
+        let modified = String::from("2000-01-01T00:00:00.000Z");
 
         let mut scripts = HashMap::new();
         scripts.insert(String::from("install"), String::from("node install.js"));
@@ -491,7 +479,7 @@ mod tests {
             name: name.clone(),
             versions,
             dist,
-            time,
+            modified,
         };
         let version: NpmRegistryVersion = NpmRegistryVersion {
             name: name.clone(),
@@ -559,7 +547,7 @@ mod tests {
                     },
                     Finding {
                         label: String::from("age"),
-                        message: String::from("package is too young"),
+                        message: String::from("version was less than 42 days"),
                         severity: Severity::Blocked,
                     },
                 ],
