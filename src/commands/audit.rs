@@ -221,6 +221,14 @@ fn audit_packages_report(
         format!("audited {} package/s", audits.len()).style(paintx(MUTED))
     );
     println!();
+
+    let finding_label_width = audits
+        .iter()
+        .flat_map(|a| a.findings.iter())
+        .map(|f| f.label.chars().count())
+        .max()
+        .unwrap_or(0);
+
     for audit in audits {
         println!(
             "    {:<w$}\t{} {}  {}",
@@ -231,27 +239,12 @@ fn audit_packages_report(
             w = measurements.0 + measurements.1 + 1
         );
 
-        let label_width = audit
-            .findings
-            .iter()
-            .map(|p| p.label.chars().count())
-            .max()
-            .unwrap_or(0);
-
-        let message_width = audit
-            .findings
-            .iter()
-            .map(|p| p.message.chars().count())
-            .max()
-            .unwrap_or(0);
-
         for finding in &audit.findings {
             println!(
-                "        {:<l$}    {:<m$}",
-                finding.label.dimmed(),
+                "        {:<l$}    {}",
+                finding.label.style(paintx(MUTED)),
                 finding.message,
-                l = label_width,
-                m = message_width
+                l = finding_label_width
             )
         }
     }
