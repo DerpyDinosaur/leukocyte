@@ -13,7 +13,9 @@
 /// println!("{}", "Hello".color(foreground).on_color(background));
 pub mod palette {
     /// Lonetree green
+    ///
     /// rgb(57,228,126)
+    ///
     /// #39e47e
     pub const GREEN: u8 = 78;
 
