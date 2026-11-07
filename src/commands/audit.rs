@@ -1,14 +1,17 @@
+use crate::cli::utils::{green, muted};
 use crate::cli::{self, AuditArgs, AuditCommands};
 use crate::errors::LeukoError;
 use crate::registry::npm::get_package_registry_details;
 use crate::registry::parse_package_name_and_version;
 use crate::registry::types::{MetaVersionResponse, NpmRegistryMeta, NpmRegistryVersion};
-use chrono::{DateTime, Utc};
-use console::style;
 use futures::stream::{self, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use owo_colors::OwoColorize;
+use std::any::Any;
 use std::thread;
 use std::time::Duration;
+
+const PROGRESS_BAR_WIDTH: usize = 10;
 
 #[derive(Debug, PartialEq)]
 enum Severity {
@@ -136,18 +139,30 @@ fn audit(
             min: 0,
             max: 42,
             weight: 0.2,
-            inverse: true,
+            inverse: false,
         };
         let Some(date_created) = &meta.time.get(&version.version) else {
             scores.push(rule);
             break 'age_finding;
         };
 
-        let date_created = DateTime::parse_from_rfc3339(date_created)
-            .unwrap()
-            .with_timezone(&Utc);
-
-        let elapsed_days = (Utc::now() - date_created).num_days();
+        let date_created: jiff::Timestamp = match date_created.parse() {
+            Ok(d) => d,
+            Err(e) => {
+                result.findings.push(Finding {
+                    label: "age".to_string(),
+                    message: "could not find age".to_string(),
+                    severity: Severity::Blocked,
+                });
+                scores.push(rule);
+                break 'age_finding;
+            }
+        };
+        // Divide by seconds in the day
+        let elapsed_days = jiff::Timestamp::now()
+            .duration_since(date_created)
+            .as_secs()
+            / 86_400;
         if elapsed_days < 3 {
             result.findings.push(Finding {
                 label: "age".to_string(),
@@ -189,17 +204,68 @@ pub fn audit_package_file() -> Result<(), LeukoError> {
 }
 
 /// Final report output for when `audit_packages()` finishes
-fn _audit_packages_report() -> Result<(), LeukoError> {
+fn audit_packages_report(
+    audits: Vec<Audit>,
+    measurements: (usize, usize),
+) -> Result<(), LeukoError> {
+    fn progress_bar(score: u8) -> String {
+        let filled = ((score as usize) * PROGRESS_BAR_WIDTH + 50) / 100;
+        format!(
+            "{}{}",
+            "⣿".repeat(filled).style(green()),
+            "⣿".repeat(PROGRESS_BAR_WIDTH - filled).style(muted())
+        )
+    }
+
+    println!(
+        "{} {}",
+        "leuko".bold(),
+        format!("audited {} package/s", audits.len()).dimmed()
+    );
+    println!();
+    for audit in audits {
+        println!(
+            "    {:<w$}\t{} {}  {}",
+            format!("{} {}", audit.name, audit.version),
+            progress_bar(audit.score),
+            format!("{:>3}", audit.score),
+            "clean".green(),
+            w = measurements.0 + measurements.1 + 1
+        );
+
+        let label_width = audit
+            .findings
+            .iter()
+            .map(|p| p.label.chars().count())
+            .max()
+            .unwrap_or(0);
+
+        let message_width = audit
+            .findings
+            .iter()
+            .map(|p| p.message.chars().count())
+            .max()
+            .unwrap_or(0);
+
+        for finding in &audit.findings {
+            println!(
+                "        {:<l$}    {:<m$}",
+                finding.label.dimmed(),
+                finding.message,
+                l = label_width,
+                m = message_width
+            )
+        }
+    }
     Ok(())
 }
 
 async fn reveal(pb: &ProgressBar, score: u8) {
-    const BAR_WIDTH: usize = 10;
     const FRAMES: u64 = 16;
     const FRAME_DELAY: Duration = Duration::from_millis(30);
 
     let style = ProgressStyle::with_template(&format!(
-        "\t{{msg}}\t{{bar:{BAR_WIDTH}.green/240}} {{pos:>3}}"
+        "\t{{msg}}\t{{bar:{PROGRESS_BAR_WIDTH}.green/240}} {{pos:>3}}"
     ))
     .expect("reveal template is valid")
     // Hover for tool-tip this takes 3 chars as the following
@@ -230,7 +296,11 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
             .unwrap()
             .tick_strings(&cli::ui::SPINNER_CELL_SMALL),
     );
-    header.set_message(format!("leuko is auditing {} packages", packages.len()));
+    header.set_message(format!(
+        "{} {}",
+        "leuko".bold(),
+        format!("auditing {} package/s", packages.len()).dimmed()
+    ));
     header.enable_steady_tick(Duration::from_millis(100));
 
     let plain_style = ProgressStyle::with_template("\t{msg}").unwrap();
@@ -283,7 +353,7 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
                             "{:<w1$} {:<w2$}\t{}",
                             name,
                             &version,
-                            style("pre-release/build tag not supported, skipping").yellow(),
+                            "pre-release/build tag not supported, skipping".yellow(),
                             w1 = name_width,
                             w2 = version_width
                         ));
@@ -317,12 +387,17 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
             .await
     });
 
+    // TODO: Need to view what tasks failed and why
+
     header.finish_and_clear();
     mp.clear().ok();
 
-    for result in results {
-        println!("{:?}", result);
-    }
+    let audits: Vec<Audit> = results.into_iter().filter_map(|(_, audit)| audit).collect();
+    audit_packages_report(audits, (name_width, version_width));
+
+    // for result in results {
+    //     println!("{:?}", result);
+    // }
 
     Ok(())
 }
@@ -347,7 +422,15 @@ mod tests {
 
     use super::*;
 
+    fn fixture_package_details() -> (NpmRegistryMeta, NpmRegistryVersion, NpmRegistryVersion) {
+        let mut m = NpmRegistryMeta::default();
+        let mut v = NpmRegistryVersion::default();
+        let mut p = NpmRegistryVersion::default();
+        (m, v, p)
+    }
+
     #[test]
+    #[ignore = "Should not be an integration test"]
     fn audit_pkgs_supports_all_install_notations() {
         /*
             npm install                         # Install all deps from package.json (also: npm i)
@@ -439,9 +522,48 @@ mod tests {
 
     #[test]
     fn audit_score_weights_sum_to_one() {
-        let meta = NpmRegistryMeta::default();
-        let version = NpmRegistryVersion::default();
-        let previous = NpmRegistryVersion::default();
+        let (meta, version, previous) = fixture_package_details();
         audit(&meta, &version, &previous);
+    }
+
+    #[test]
+    fn audit_report_colours() {
+        let audits = vec![
+            Audit {
+                name: "zod".to_string(),
+                version: "1.0.0".to_string(),
+                score: 50,
+                findings: vec![
+                    Finding {
+                        label: String::from("script"),
+                        message: String::from("postinstall: node install.js"),
+                        severity: Severity::High,
+                    },
+                    Finding {
+                        label: String::from("age"),
+                        message: String::from("package is too young"),
+                        severity: Severity::Blocked,
+                    },
+                ],
+            },
+            Audit {
+                name: "tailwindcss".to_string(),
+                version: "1.0.0".to_string(),
+                score: 50,
+                findings: vec![
+                    Finding {
+                        label: String::from("script"),
+                        message: String::from("postinstall: node install.js"),
+                        severity: Severity::High,
+                    },
+                    Finding {
+                        label: String::from("age"),
+                        message: String::from("package is too young"),
+                        severity: Severity::Blocked,
+                    },
+                ],
+            },
+        ];
+        audit_packages_report(audits, (11, 5));
     }
 }
