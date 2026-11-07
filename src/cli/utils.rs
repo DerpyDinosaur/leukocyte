@@ -1,4 +1,4 @@
-use console::Style;
+use owo_colors::Style;
 
 // TODO: Try finding the best colour library for you
 
@@ -29,5 +29,11 @@ pub mod dot8 {
 /// progress_bar.set_message(muted().apply_to("hello world").to_string());
 /// ```
 pub fn muted() -> Style {
-    Style::new().color256(244)
+    Style::new().truecolor(40, 40, 40)
+}
+
+pub const MUTED: Style = Style::new().truecolor(40, 40, 40);
+
+pub fn green() -> Style {
+    Style::new().truecolor(57, 228, 126)
 }
