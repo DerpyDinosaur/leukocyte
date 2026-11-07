@@ -1,6 +1,4 @@
-use owo_colors::Style;
-
-// TODO: Try finding the best colour library for you
+use owo_colors::{Style, XtermColors};
 
 /// Cell Layout:
 /// 1        4
@@ -21,19 +19,12 @@ pub mod dot8 {
     pub const D8: u8 = 0x80;
 }
 
-/// Apply dim style to string
+/// Apply colours using owo_colors to strings
 ///
 /// Example:
 /// ```ignore
-/// let progress_bar = multi_progress.add(ProgressBar::new_spinner());
-/// progress_bar.set_message(muted().apply_to("hello world").to_string());
+/// println!("{}", String::from("name")).style(paintx(MUTED)));
 /// ```
-pub fn muted() -> Style {
-    Style::new().truecolor(40, 40, 40)
-}
-
-pub const MUTED: Style = Style::new().truecolor(40, 40, 40);
-
-pub fn green() -> Style {
-    Style::new().truecolor(57, 228, 126)
+pub fn paintx(index: u8) -> Style {
+    Style::new().color(XtermColors::from(index))
 }

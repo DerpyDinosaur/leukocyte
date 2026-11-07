@@ -1,11 +1,12 @@
-use crate::cli::utils::{green, muted};
+use crate::cli::ui::palette::{GREEN, MUTED};
+use crate::cli::utils::paintx;
 use crate::cli::{self, AuditArgs, AuditCommands};
 use crate::errors::LeukoError;
 use crate::registry::npm::get_package_registry_details;
 use crate::registry::parse_package_name_and_version;
 use crate::registry::types::{MetaVersionResponse, NpmRegistryMeta, NpmRegistryVersion};
 use futures::stream::{self, StreamExt};
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressState, ProgressStyle};
 use owo_colors::OwoColorize;
 use std::any::Any;
 use std::thread;
@@ -212,15 +213,15 @@ fn audit_packages_report(
         let filled = ((score as usize) * PROGRESS_BAR_WIDTH + 50) / 100;
         format!(
             "{}{}",
-            "⣿".repeat(filled).style(green()),
-            "⣿".repeat(PROGRESS_BAR_WIDTH - filled).style(muted())
+            "⣿".repeat(filled).style(paintx(GREEN)),
+            "⣿".repeat(PROGRESS_BAR_WIDTH - filled).style(paintx(MUTED))
         )
     }
 
     println!(
         "{} {}",
         "leuko".bold(),
-        format!("audited {} package/s", audits.len()).dimmed()
+        format!("audited {} package/s", audits.len()).style(paintx(MUTED))
     );
     println!();
     for audit in audits {
@@ -229,7 +230,7 @@ fn audit_packages_report(
             format!("{} {}", audit.name, audit.version),
             progress_bar(audit.score),
             format!("{:>3}", audit.score),
-            "clean".green(),
+            "clean".style(paintx(GREEN)),
             w = measurements.0 + measurements.1 + 1
         );
 
@@ -265,7 +266,7 @@ async fn reveal(pb: &ProgressBar, score: u8) {
     const FRAME_DELAY: Duration = Duration::from_millis(30);
 
     let style = ProgressStyle::with_template(&format!(
-        "\t{{msg}}\t{{bar:{PROGRESS_BAR_WIDTH}.green/240}} {{pos:>3}}"
+        "\t{{msg}}\t{{bar:{PROGRESS_BAR_WIDTH}.{GREEN}/{MUTED}}} {{pos:>3}}"
     ))
     .expect("reveal template is valid")
     // Hover for tool-tip this takes 3 chars as the following
@@ -299,7 +300,7 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
     header.set_message(format!(
         "{} {}",
         "leuko".bold(),
-        format!("auditing {} package/s", packages.len()).dimmed()
+        format!("auditing {} package/s", packages.len()).style(paintx(MUTED))
     ));
     header.enable_steady_tick(Duration::from_millis(100));
 
@@ -322,7 +323,7 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
         .max()
         .unwrap_or(0);
 
-    let pkg_spinner_style = ProgressStyle::with_template(&format!("\t{{msg}}\t{{spinner:.cyan}}"))
+    let pkg_spinner_style = ProgressStyle::with_template(&format!("\t{{msg}}\t{{spinner}}"))
         .unwrap()
         .tick_strings(&cli::ui::PROGRESS_DNA);
 
