@@ -52,9 +52,9 @@ pub struct NpmRegistryVersion {
     pub name: String,
     pub version: String,
     pub scripts: Option<HashMap<String, String>>,
-    pub dependancies: Option<HashMap<String, String>>,
-    #[serde(rename = "devDependancies")]
-    pub dev_dependancies: Option<HashMap<String, String>>,
-    #[serde(rename = "peerDependancies")]
-    pub peer_dependancies: Option<HashMap<String, String>>,
+    pub dependencies: Option<HashMap<String, String>>,
+    #[serde(rename = "devDependencies")]
+    pub dev_dependencies: Option<HashMap<String, String>>,
+    #[serde(rename = "peerDependencies")]
+    pub peer_dependencies: Option<HashMap<String, String>>,
 }

@@ -1,53 +1,24 @@
-use crate::cli::ui::palette::{GREEN, MUTED};
-use crate::cli::utils::paintx;
+mod tools;
+mod types;
+
+use crate::cli::tools::paintx;
+use crate::cli::ui::palette::*;
 use crate::cli::{self, AuditArgs, AuditCommands};
+use crate::commands::audit::tools::calculate_verdict;
 use crate::errors::LeukoError;
 use crate::registry::npm::get_package_registry_details;
 use crate::registry::parse_package_name_and_version;
 use crate::registry::types::{MetaVersionResponse, NpmRegistryMeta, NpmRegistryVersion};
 use futures::stream::{self, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressState, ProgressStyle};
-use owo_colors::OwoColorize;
-use std::any::Any;
-use std::thread;
+use owo_colors::{OwoColorize, Style, Styled, XtermColors};
 use std::time::Duration;
+use std::{fmt, thread};
+
+use self::tools::is_prerelease;
+use self::types::*;
 
 const PROGRESS_BAR_WIDTH: usize = 10;
-
-#[derive(Debug, PartialEq)]
-enum Severity {
-    Blocked,
-    High,
-    Medium,
-    Low,
-}
-
-struct FindingScoreRule {
-    value: u8,
-    min: u8,
-    max: u8,
-    weight: f32,
-    inverse: bool,
-}
-
-#[derive(Debug)]
-struct Finding {
-    label: String,
-    message: String,
-    severity: Severity,
-}
-
-#[derive(Debug)]
-struct Audit {
-    name: String,
-    version: String,
-    score: u8,
-    findings: Vec<Finding>,
-}
-
-fn is_prerelease(version: &str) -> bool {
-    version.split('+').next().unwrap_or("").contains('-')
-}
 
 fn audit(
     meta: &NpmRegistryMeta,
@@ -64,28 +35,27 @@ fn audit(
         - [x] Dependency count / bus factor
         - [x] Presence of install scripts (preinstall/postinstall)
 
-        Implement
+        TODO:
         min-max normalization for score
         https://en.wikipedia.org/wiki/Weighted_arithmetic_mean
+
+        REFRENCE:
+
     */
     let mut result: Audit = Audit {
         name: version.name.to_string(),
         version: version.version.to_string(),
         score: 100,
+        verdict: Verdict::Pass,
         findings: Vec::new(),
     };
 
     let mut scores: Vec<FindingScoreRule> = Vec::new();
 
     'scripts_finding: {
-        let mut rule = FindingScoreRule {
-            value: 0,
-            min: 0,
-            max: 1,
-            weight: 0.7,
-            inverse: true,
-        };
+        let mut rule = FindingScoreRule::script();
 
+        // Scripts returned none
         let Some(scripts) = &version.scripts else {
             scores.push(rule);
             break 'scripts_finding;
@@ -95,6 +65,7 @@ fn audit(
             .iter()
             .find_map(|&name| scripts.get(name).map(|script| (name, script)));
 
+        // Scripts did not contain known bads
         let Some((name, script)) = first else {
             scores.push(rule);
             break 'scripts_finding;
@@ -103,45 +74,40 @@ fn audit(
         result.findings.push(Finding {
             label: String::from("scripts"),
             message: format!("{}: {}", name, script),
-            severity: Severity::Blocked,
+            severity: Severity::High,
         });
+        rule.value = 1;
 
         scores.push(rule);
     }
 
-    'dependancies_finding: {
-        let mut rule: FindingScoreRule = FindingScoreRule {
-            value: 0,
-            min: 0,
-            max: 1,
-            weight: 0.1,
-            inverse: true,
-        };
+    'dependencies_finding: {
+        let mut rule: FindingScoreRule = FindingScoreRule::dependency();
 
-        let Some(dependancies) = &version.dependancies else {
+        let Some(dependencies) = &version.dependencies else {
             scores.push(rule);
-            break 'dependancies_finding;
+            break 'dependencies_finding;
         };
 
-        let count_of_depends = dependancies.iter().count();
+        let count_of_depends = dependencies.iter().count();
 
         result.findings.push(Finding {
             label: "dependencies".to_string(),
-            message: format!("{}", count_of_depends),
+            message: format!("found {}", count_of_depends),
             severity: Severity::Low,
         });
+        rule.value = 1;
 
         scores.push(rule);
     }
 
     'age_finding: {
-        let mut rule: FindingScoreRule = FindingScoreRule {
-            value: 0,
-            min: 0,
-            max: 42,
-            weight: 0.2,
-            inverse: false,
-        };
+        /*
+            TODO: Need to create a long audit to enable/disable the header
+            As the modified date is for when the registry was last modified meaning
+            pkg@1.0.0 has the created date of pkg@latest
+        */
+        let mut rule: FindingScoreRule = FindingScoreRule::age();
 
         let date_created = &meta.modified;
         let date_created: jiff::Timestamp = match date_created.parse() {
@@ -150,7 +116,7 @@ fn audit(
                 result.findings.push(Finding {
                     label: "age".to_string(),
                     message: "could not find age".to_string(),
-                    severity: Severity::Blocked,
+                    severity: Severity::High,
                 });
                 scores.push(rule);
                 break 'age_finding;
@@ -161,25 +127,14 @@ fn audit(
             .duration_since(date_created)
             .as_secs()
             / 86_400;
-        if elapsed_days < 3 {
+        if elapsed_days < 42 {
             result.findings.push(Finding {
                 label: "age".to_string(),
-                message: "version is too new".to_string(),
-                severity: Severity::Blocked,
-            })
-        } else if elapsed_days < 7 {
-            result.findings.push(Finding {
-                label: "age".to_string(),
-                message: "version was released this week".to_string(),
-                severity: Severity::High,
-            })
-        } else if elapsed_days < 42 {
-            result.findings.push(Finding {
-                label: "age".to_string(),
-                message: "version was less than 42 days".to_string(),
-                severity: Severity::Medium,
+                message: format!("version is {elapsed_days} days old"),
+                severity: if elapsed_days < 3 { Severity::High } else { Severity::Medium }
             })
         }
+        rule.value = elapsed_days as u8;
 
         scores.push(rule);
     }
@@ -194,6 +149,9 @@ fn audit(
         );
     }
 
+    result.score = calculate_verdict(&scores);
+    result.verdict = Verdict::from_score(result.score);
+
     result
 }
 
@@ -206,11 +164,11 @@ fn audit_packages_report(
     audits: Vec<Audit>,
     measurements: (usize, usize),
 ) -> Result<(), LeukoError> {
-    fn progress_bar(score: u8) -> String {
+    fn progress_bar(score: u8, verdict: &Verdict) -> String {
         let filled = ((score as usize) * PROGRESS_BAR_WIDTH + 50) / 100;
         format!(
             "{}{}",
-            "⣿".repeat(filled).style(paintx(GREEN)),
+            "⣿".repeat(filled).style(verdict.owo_style()),
             "⣿".repeat(PROGRESS_BAR_WIDTH - filled).style(paintx(MUTED))
         )
     }
@@ -232,31 +190,47 @@ fn audit_packages_report(
     for audit in audits {
         println!(
             "    {:<w$}\t{} {}  {}",
-            format!("{} {}", audit.name, audit.version),
-            progress_bar(audit.score),
+            format!("{}@{}", audit.name, audit.version),
+            progress_bar(audit.score, &audit.verdict),
             format!("{:>3}", audit.score),
-            "clean".style(paintx(GREEN)),
+            audit.verdict.word().style(audit.verdict.owo_style()),
             w = measurements.0 + measurements.1 + 1
         );
 
         for finding in &audit.findings {
+            let label_style = match finding.severity {
+                Severity::High => paintx(RED),
+                Severity::Medium => paintx(YELLOW),
+                _ => Style::new().default_color(),
+            };
             println!(
                 "        {:<l$}    {}",
-                finding.label.style(paintx(MUTED)),
+                finding.label.style(label_style),
                 finding.message,
                 l = finding_label_width
             )
         }
     }
+    println!();
+    println!(
+        "{} {} {} {} {}",
+        "1 clean".style(paintx(GREEN)),
+        "·".style(paintx(MUTED)),
+        "1 warning".style(paintx(YELLOW)),
+        "·".style(paintx(MUTED)),
+        "1 blocked".style(paintx(RED)),
+    );
     Ok(())
 }
 
 async fn reveal(pb: &ProgressBar, score: u8) {
     const FRAMES: u64 = 16;
     const FRAME_DELAY: Duration = Duration::from_millis(30);
+    let verdict: Verdict = Verdict::from_score(score);
+    let verdict: u8 = verdict.xterm();
 
     let style = ProgressStyle::with_template(&format!(
-        "\t{{msg}}\t{{bar:{PROGRESS_BAR_WIDTH}.{GREEN}/{MUTED}}} {{pos:>3}}"
+        "\t{{msg}}\t{{bar:{PROGRESS_BAR_WIDTH}.{verdict}/{MUTED}}} {{pos:>3}}"
     ))
     .expect("reveal template is valid")
     // Hover for tool-tip this takes 3 chars as the following
@@ -352,7 +326,6 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
                     }
 
                     let res = get_package_registry_details(&client, &name, &version).await;
-                    // TODO: Implement auditing
                     let package_audit = match &res {
                         Ok((m, v, pv)) => audit(m, v, pv),
                         Err(e) => {
@@ -361,6 +334,7 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
                                 name: name.to_string(),
                                 version: version.to_string(),
                                 score: 0,
+                                verdict: Verdict::Block,
                                 findings: Vec::new(),
                             }
                         }
@@ -478,28 +452,29 @@ mod tests {
             name: name.clone(),
             version: version_string.clone(),
             scripts: Some(scripts),
-            dependancies: None,
-            dev_dependancies: None,
-            peer_dependancies: None,
+            dependencies: None,
+            dev_dependencies: None,
+            peer_dependencies: None,
         };
         let previous_version: NpmRegistryVersion = NpmRegistryVersion {
             name: name.clone(),
             version: previous_version_string.clone(),
             scripts: None,
-            dependancies: None,
-            dev_dependancies: None,
-            peer_dependancies: None,
+            dependencies: None,
+            dev_dependencies: None,
+            peer_dependencies: None,
         };
 
         let result = audit(&meta, &version, &previous_version);
         let findings = &result.findings;
 
+        assert_eq!(result.score, 0);
         assert_eq!(findings.len(), 1);
 
         let script_finding = &findings[0];
         assert_eq!(script_finding.label, "scripts");
         assert_eq!(script_finding.message, "install: node install.js");
-        assert_eq!(script_finding.severity, Severity::Blocked);
+        assert_eq!(script_finding.severity, Severity::High);
     }
 
     #[test]
@@ -515,23 +490,7 @@ mod tests {
                 name: "zod".to_string(),
                 version: "1.0.0".to_string(),
                 score: 50,
-                findings: vec![
-                    Finding {
-                        label: String::from("script"),
-                        message: String::from("postinstall: node install.js"),
-                        severity: Severity::High,
-                    },
-                    Finding {
-                        label: String::from("age"),
-                        message: String::from("package is too young"),
-                        severity: Severity::Blocked,
-                    },
-                ],
-            },
-            Audit {
-                name: "tailwindcss".to_string(),
-                version: "1.0.0".to_string(),
-                score: 50,
+                verdict: Verdict::Block,
                 findings: vec![
                     Finding {
                         label: String::from("script"),
@@ -541,7 +500,25 @@ mod tests {
                     Finding {
                         label: String::from("age"),
                         message: String::from("version was less than 42 days"),
-                        severity: Severity::Blocked,
+                        severity: Severity::Medium,
+                    },
+                ],
+            },
+            Audit {
+                name: "tailwindcss".to_string(),
+                version: "1.0.0".to_string(),
+                score: 50,
+                verdict: Verdict::Warning,
+                findings: vec![
+                    Finding {
+                        label: String::from("script"),
+                        message: String::from("postinstall: node install.js"),
+                        severity: Severity::High,
+                    },
+                    Finding {
+                        label: String::from("age"),
+                        message: String::from("version was less than 42 days"),
+                        severity: Severity::Low,
                     },
                 ],
             },

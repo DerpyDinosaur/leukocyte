@@ -6,6 +6,10 @@ use crate::get_json;
 
 use super::types::{NpmRegistryMeta, NpmRegistryVersion};
 
+// References:
+// ----- NPM Metadata Registry ---------------------
+// https://github.com/npm/registry/blob/main/docs/responses/package-metadata.md
+
 pub async fn get_package_registry_details(
     client: &Client,
     name: &str,

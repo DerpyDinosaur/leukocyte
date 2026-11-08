@@ -1,5 +1,5 @@
 pub mod ui;
-pub mod utils;
+pub mod tools;
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
