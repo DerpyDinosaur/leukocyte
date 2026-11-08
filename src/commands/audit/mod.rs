@@ -8,7 +8,7 @@ use crate::commands::audit::tools::calculate_verdict;
 use crate::errors::LeukoError;
 use crate::registry::npm::get_package_registry_details;
 use crate::registry::parse_package_name_and_version;
-use crate::registry::types::{MetaVersionResponse, NpmRegistryMeta, NpmRegistryVersion};
+use crate::registry::types::{NpmRegistryMeta, NpmRegistryVersion};
 use futures::stream::{self, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressState, ProgressStyle};
 use owo_colors::{OwoColorize, Style, Styled, XtermColors};
@@ -34,13 +34,6 @@ fn audit(
         - [x] Package Age
         - [x] Dependency count / bus factor
         - [x] Presence of install scripts (preinstall/postinstall)
-
-        TODO:
-        min-max normalization for score
-        https://en.wikipedia.org/wiki/Weighted_arithmetic_mean
-
-        REFRENCE:
-
     */
     let mut result: Audit = Audit {
         name: version.name.to_string(),
@@ -344,7 +337,7 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
                     reveal(&pb, package_audit.score).await;
 
                     // DELETE: This is for viewing animations while designing
-                    // tokio::time::sleep(Duration::from_secs(5)).await;
+                    // tokio::time::sleep(Duration::from_secs(1)).await;
 
                     (name, Some(package_audit))
                 }
@@ -361,10 +354,6 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
 
     let audits: Vec<Audit> = results.into_iter().filter_map(|(_, audit)| audit).collect();
     audit_packages_report(&audits, (name_width, version_width));
-
-    // for result in results {
-    //     println!("{:?}", result);
-    // }
 
     Ok(())
 }
@@ -383,7 +372,6 @@ pub fn run(args: AuditArgs) -> Result<(), LeukoError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::registry::types::MetaScripts;
     use serde::de::IgnoredAny;
     use std::collections::HashMap;
 
