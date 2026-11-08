@@ -33,19 +33,19 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf ../../../myapp-${{ matrix.target }}.tar.gz myapp
+          tar czf ../../../leuko-${{ matrix.target }}.tar.gz leuko
           cd ../../..
-          shasum -a 256 myapp-${{ matrix.target }}.tar.gz > myapp-${{ matrix.target }}.tar.gz.sha256
+          shasum -a 256 leuko-${{ matrix.target }}.tar.gz > leuko-${{ matrix.target }}.tar.gz.sha256
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path target/${{ matrix.target }}/release/myapp.exe -DestinationPath myapp-${{ matrix.target }}.zip
+        run: Compress-Archive -Path target/${{ matrix.target }}/release/leuko.exe -DestinationPath leuko-${{ matrix.target }}.zip
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            myapp-${{ matrix.target }}.tar.gz
-            myapp-${{ matrix.target }}.tar.gz.sha256
-            myapp-${{ matrix.target }}.zip
+            leuko-${{ matrix.target }}.tar.gz
+            leuko-${{ matrix.target }}.tar.gz.sha256
+            leuko-${{ matrix.target }}.zip
