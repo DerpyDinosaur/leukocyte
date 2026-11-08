@@ -161,7 +161,7 @@ pub fn audit_package_file() -> Result<(), LeukoError> {
 
 /// Final report output for when `audit_packages()` finishes
 fn audit_packages_report(
-    audits: Vec<Audit>,
+    audits: &[Audit],
     measurements: (usize, usize),
 ) -> Result<(), LeukoError> {
     fn progress_bar(score: u8, verdict: &Verdict) -> String {
@@ -212,13 +212,15 @@ fn audit_packages_report(
         }
     }
     println!();
+    let count = |v| audits.iter().filter(|a| Verdict::from_score(a.score) == v).count();
     println!(
         "{} {} {} {} {}",
-        "1 clean".style(paintx(GREEN)),
+        format!("{} blocked", count(Verdict::Block)).style(Verdict::Block.owo_style()),
         "·".style(paintx(MUTED)),
-        "1 warning".style(paintx(YELLOW)),
+        format!("{} warning", count(Verdict::Warning)).style(Verdict::Warning.owo_style()),
         "·".style(paintx(MUTED)),
-        "1 blocked".style(paintx(RED)),
+        format!("{} pass", count(Verdict::Pass)).style(Verdict::Pass.owo_style()),
+
     );
     Ok(())
 }
@@ -358,7 +360,7 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
     mp.clear().ok();
 
     let audits: Vec<Audit> = results.into_iter().filter_map(|(_, audit)| audit).collect();
-    audit_packages_report(audits, (name_width, version_width));
+    audit_packages_report(&audits, (name_width, version_width));
 
     // for result in results {
     //     println!("{:?}", result);
@@ -523,6 +525,6 @@ mod tests {
                 ],
             },
         ];
-        audit_packages_report(audits, (11, 5));
+        audit_packages_report(&audits, (11, 5));
     }
 }
