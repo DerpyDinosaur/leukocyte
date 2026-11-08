@@ -4,6 +4,8 @@
 
 A white blood cell for developer environments.
 
+</div>
+
 Leukocyte is a shim that acts as an intrusion prevention system (IPS). Its goal is to stop suspicious packages from being installed on your computer.
 
 Future features and ecosystem of this software will include:
@@ -13,8 +15,6 @@ Future features and ecosystem of this software will include:
 - Workflows and tutorials on using leuko in github actions
 - Other language support like Go, Python, Rust, and more.
 - If I get adventurous maybe even static/dynamic analysis to check for malicious code/processes
-
-</div>
 
 ## Installation
 
