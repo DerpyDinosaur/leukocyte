@@ -7,7 +7,7 @@ use std::{env, io::Write, process::Command};
 fn add_verb(target: &str) -> Result<&'static str, LeukoError> {
     match target {
         "npm" => Ok("install"),
-        "pnpm" | "yarn" => Ok("add"),
+        "pnpm" | "yarn" | "bun" => Ok("add"),
         _ => Err(LeukoError::UnsupportedPackageManager(target.to_string())),
     }
 }
@@ -27,10 +27,9 @@ pub fn build_args(
     Ok(args)
 }
 
-pub fn passthrough(target: &str, raw_args: &ParsedArgs) -> Result<(), LeukoError> {
+pub fn passthrough(target: &str, raw_args: &[String]) -> Result<(), LeukoError> {
     let package_manager_path = locate_package_manager(target)?;
-    let args = build_args(target, &raw_args.flags, &raw_args.packages)?;
-    launch(&package_manager_path, &args)
+    launch(&package_manager_path, raw_args)
 }
 
 pub fn execute(target: &str, raw_args: &ParsedArgs, packages: &[String]) -> Result<(), LeukoError> {
@@ -70,7 +69,8 @@ fn locate_package_manager(target: &str) -> Result<PathBuf, LeukoError> {
 }
 
 fn launch(real: &Path, args: &[String]) -> Result<(), LeukoError> {
-    let mut cmd = Command::new(real); // argv array, no shell
+    let mut cmd = Command::new(real);
+    cmd.args(args);
 
     // exec() skips destructors and buffer flushing, so flush first.
     let _ = std::io::stdout().flush();

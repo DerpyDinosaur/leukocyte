@@ -34,7 +34,7 @@ fn run_as_shim(package_manager: &str, args: &Vec<String>) -> Result<(), LeukoErr
         Fetching details for packages could be something leuko does via commands too
         Giving the user options, if they do not install the shim for a specific package manager
     */
-    let raw_args = leuko::parse_args(args);
+    let raw_args = leuko::parse_args(&args[1..]);
     let is_installing: bool = raw_args
         .verb
         .as_deref()
@@ -44,7 +44,7 @@ fn run_as_shim(package_manager: &str, args: &Vec<String>) -> Result<(), LeukoErr
         let audited_packages = commands::audit::audit_packages(&raw_args.packages)?;
         shim::execute(&package_manager, &raw_args, &audited_packages)
     } else {
-        shim::passthrough(&package_manager, &raw_args)
+        shim::passthrough(&package_manager, &args[1..])
     }
 }
 

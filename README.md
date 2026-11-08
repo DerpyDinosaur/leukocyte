@@ -1,36 +1,23 @@
-# Leuko
+<div align="center">
 
-This binary is meant to capture commands installing packages to package managers and audit them before allowing you to install them.
-A prevention against supply chain attacks.
+## Leukocyte
+
+A white blood cell for developer environments.
+
+Leukocyte is a shim that acts as an intrusion prevention system (IPS). Its goal is to stop suspicious packages from being installed on your computer.
+
+Future features and ecosystem of this software will include:
+- Website with documentation
+- Website to query packages instead of installing the tool
+- Extra CLI tools to manage developer environments
+- Workflows and tutorials on using leuko in github actions
+- Other language support like Go, Python, Rust, and more.
+- If I get adventurous maybe even static/dynamic analysis to check for malicious code/processes
+
+</div>
 
 ## Installation
 
-cargo build --release
+An install method is coming soon.
 
-### Install the binary
-
-cp target/release/leuko ~/.local/bin/leuko
-
-### Symlink npm → leuko
-
-ln -sf ~/.local/bin/leuko ~/.local/bin/npm
-
-### Ensure this dir is first in PATH
-
-export PATH="$HOME/.local/bin:$PATH"
-
-## Developer Notes
-
-Build for windows
-
-`rustup target add x86_64-pc-windows-gnu`
-
-`sudo apt install mingw-w64`
-
-`cargo build --target x86_64-unknown-linux-gnu`
-
-#### Testing
-
-No verbosity on tests to visualize outputs
-
-`cargo test -q --lib TEST -- --nocapture`
+In the meantime, if you're comfortable building from source, you can clone the repository and build a release. Follow the instructions in `DEVELOPER_NOTES.md` and you'll be good to go.
