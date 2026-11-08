@@ -8,12 +8,15 @@ A prevention against supply chain attacks.
 cargo build --release
 
 ### Install the binary
+
 cp target/release/leuko ~/.local/bin/leuko
 
 ### Symlink npm → leuko
+
 ln -sf ~/.local/bin/leuko ~/.local/bin/npm
 
 ### Ensure this dir is first in PATH
+
 export PATH="$HOME/.local/bin:$PATH"
 
 ## Developer Notes
@@ -25,3 +28,9 @@ Build for windows
 `sudo apt install mingw-w64`
 
 `cargo build --target x86_64-unknown-linux-gnu`
+
+#### Testing
+
+No verbosity on tests to visualize outputs
+
+`cargo test -q --lib TEST -- --nocapture`

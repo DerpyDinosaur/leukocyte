@@ -1,5 +1,5 @@
 use super::LeukoError;
-use colored::Colorize;
+use owo_colors::OwoColorize;
 
 pub fn report(err: &LeukoError) {
     // Print top level error
@@ -26,7 +26,7 @@ pub fn exit_code(err: &LeukoError) -> i32 {
 
 fn hint(err: &LeukoError) -> Option<&'static str> {
     match err {
-        LeukoError::Network(_) => Some("check your internet connection and try again"),
+        LeukoError::Http(_) => Some("check your internet connection and try again"),
         _ => None,
     }
 }

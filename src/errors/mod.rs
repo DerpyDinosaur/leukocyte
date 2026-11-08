@@ -1,6 +1,7 @@
 pub mod reporter;
+use thiserror::Error;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub enum LeukoError {
     /* Shim errors */
     #[error("Failed to get leuko's path")]
@@ -15,9 +16,12 @@ pub enum LeukoError {
     #[error("'{0}' is not a supported package manager")]
     UnsupportedPackageManager(String),
 
+    #[error("{0}")]
+    LaunchFailed(#[from] std::io::Error),
+
     /* Network errors */
-    #[error("Network request failed: {0}")]
-    Network(#[from] reqwest::Error),
+    #[error("Request failed: {0}")]
+    Http(#[from] reqwest::Error),
 
     /* Parsing Error */
     #[error("Failed to parse response: {0}")]

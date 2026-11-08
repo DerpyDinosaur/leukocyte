@@ -1,10 +1,7 @@
 use clap::Parser;
-use leuko::errors::{reporter, LeukoError};
-use leuko::{commands, cli, shim};
-
-// TODO: Checkout Tabled crate
-// TODO: checkout owo colours crate
-// TODO:
+use leuko::cli::{Cli, Commands};
+use leuko::errors::{LeukoError, reporter};
+use leuko::{commands, shim};
 
 fn main() {
     // Nom all arguments from environment
@@ -37,29 +34,25 @@ fn run_as_shim(package_manager: &str, args: &Vec<String>) -> Result<(), LeukoErr
         Fetching details for packages could be something leuko does via commands too
         Giving the user options, if they do not install the shim for a specific package manager
     */
+    let raw_args = leuko::parse_args(args);
+    let is_installing: bool = raw_args
+        .verb
+        .as_deref()
+        .is_some_and(|v| leuko::SUPPORTED_ADD_PACKAGE_CMDS.contains(&v));
 
-    // Check if subcommand is a supported add package command
-    let subcommand: &str = args.get(1).map(String::as_str).unwrap_or("");
-    let is_installing: bool = leuko::SUPPORTED_ADD_PACKAGE_CMDS.contains(&subcommand);
-
-    // Get packages from arguments
-    let packages = leuko::extract_packages(args);
-
-    // If you are installing packages, run audit
-    if is_installing && !packages.is_empty() {
-        commands::audit::run(&packages)?;
+    if is_installing && !raw_args.packages.is_empty() {
+        let audited_packages = commands::audit::audit_packages(&raw_args.packages)?;
+        shim::execute(&package_manager, &raw_args, &audited_packages)
+    } else {
+        shim::passthrough(&package_manager, &raw_args)
     }
-
-    shim::execute(&package_manager)
 }
 
 fn run_as_leuko() -> Result<(), LeukoError> {
-    let cli = cli::Cli::parse();
+    let cli = Cli::parse();
 
     match cli.command {
-        cli::Commands::Audit { packages } => {
-            commands::audit::run(&packages)?;
-        }
+        Commands::Audit(audit) => commands::audit::run(audit)?,
     }
 
     Ok(())

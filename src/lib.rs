@@ -1,15 +1,33 @@
-use reqwest::blocking::Client;
+use futures::stream::{self, StreamExt};
+use reqwest::{Client, RequestBuilder, header::HeaderMap};
+use serde::de::DeserializeOwned;
 
 pub mod cli;
 pub mod commands;
-pub mod shim;
 pub mod errors;
+pub mod registry;
+pub mod shim;
 pub mod types;
-
-use errors::LeukoError;
 
 pub static SUPPORTED_PACKAGE_MANAGERS: [&str; 5] = ["bun", "leuko", "npm", "pnpm", "yarn"];
 pub static SUPPORTED_ADD_PACKAGE_CMDS: [&str; 4] = ["install", "i", "add", "a"];
+
+#[derive(Debug, Clone)]
+pub struct BatchConfig {
+    pub params: Vec<(String, String)>,
+    pub headers: HeaderMap,
+    pub concurrency: usize,
+}
+
+impl Default for BatchConfig {
+    fn default() -> Self {
+        Self {
+            params: Vec::new(),
+            headers: HeaderMap::new(),
+            concurrency: 15,
+        }
+    }
+}
 
 pub fn whatami(args: &Vec<String>) -> &str {
     /*
@@ -32,40 +50,80 @@ pub fn whatami(args: &Vec<String>) -> &str {
     return match name {
         Some(value) => value,
         None => DEFAULT,
-    }
+    };
 }
 
-pub fn extract_packages(args: &[String]) -> Vec<String> {
-    /*
-        Get all packages from arguments
-    */
-    let mut packages = Vec::new();
+pub fn parse_args(args: &[String]) -> types::ParsedArgs {
+    let mut parsed = types::ParsedArgs { verb: None, flags: vec![], packages: vec![] };
+
     for arg in args {
         if arg.starts_with('-') {
-            continue;
+            parsed.flags.push(arg.clone());
+        } else if parsed.verb.is_none() {
+            parsed.verb = Some(arg.clone()); // first non-flag is the command
+        } else {
+            parsed.packages.push(arg.clone());
         }
-        if SUPPORTED_PACKAGE_MANAGERS.contains(&arg.as_str()) {
-            continue;
-        }
-        if SUPPORTED_ADD_PACKAGE_CMDS.contains(&arg.as_str()) {
-            continue;
-        }
-        packages.push(arg.to_string());
     }
-    packages
+    parsed
 }
 
-pub fn fetch_npm_registry_details(package: &str) -> Result<types::NpmRegistryResponse, LeukoError> {
-    // NPM Registry
-    // Get Specific Version -> https://registry.npmjs.org/<package-name>/<version>
-    // Get Package Info -> https://registry.npmjs.org/<package-name>
-    let client = Client::new();
-    let url = format!("https://registry.npmjs.org/{}/latest", package);
+/// Get single json request and parse into struct with serde, this is to provide flexibility
+/// in my request patterns for asynchronous small batches or to use it within get_json_many()
+/// and fetch loads while having flexibility on my options for params and headers.
+///
+/// Examples:
+/// ```ignore
+/// // Empty query params and headers
+/// let a = get_json<DummyJSON>(client.get(url)).await?;
+/// // Batched
+/// let results = stream::iter(&urls)
+///    .map(|u| get_json<DummyJSON>(client.get(u).query(&params)))
+///    .buffer_unordered(8)
+///    .collect()
+///    .await;
+///```
+/// TODO: Implement a way to do the same flow for `get_json()` but with `get_json_many()`
+/// this way I can deprecate `BatchConfig` struct
+pub async fn get_json<T: DeserializeOwned>(req: RequestBuilder) -> Result<T, reqwest::Error> {
+    req.send().await?.error_for_status()?.json().await
+}
 
-    let response = client.get(&url).send()?;
-    let data = response.text()?;
-    let details: types::NpmRegistryResponse = serde_json::from_str(&data)?;
-    Ok(details)
+pub async fn get_json_many<T>(
+    client: &Client,
+    urls: &[String],
+    opts: BatchConfig,
+) -> Vec<Result<T, reqwest::Error>>
+where
+    T: DeserializeOwned,
+{
+    let BatchConfig {
+        params,
+        headers,
+        concurrency,
+    } = opts;
+
+    stream::iter(urls)
+        .map(|url| get_json::<T>(client.get(url).query(&params).headers(headers.clone())))
+        .buffered(concurrency.max(1))
+        .collect()
+        .await
+}
+
+pub fn encode(input: &str) -> String {
+    let mut encoded = String::new();
+    for byte in input.bytes() {
+        // Safe characters per RFC 3986 unreserved set: A-Z, a-z, 0-9, -, _, ., ~
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char);
+            }
+            _ => {
+                encoded.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+    encoded
 }
 
 #[cfg(test)]
@@ -98,29 +156,19 @@ mod tests {
         #[test]
         fn filters_flags() {
             let args = ["add", "-D", "zod"].map(str::to_string).to_vec();
-            assert_eq!(extract_packages(&args), vec!["zod"]);
+            assert_eq!(parse_args(&args).packages, vec!["zod"]);
         }
 
         #[test]
         fn filters_subcommands() {
             let args = ["add", "zod", "react"].map(str::to_string).to_vec();
-            assert_eq!(extract_packages(&args), vec!["zod", "react"]);
+            assert_eq!(parse_args(&args).packages, vec!["zod", "react"]);
         }
 
         #[test]
         fn empty() {
             let args = [].map(str::to_string).to_vec();
-            assert!(extract_packages(&args).is_empty());
-        }
-    }
-
-    mod fetch {
-        use super::*;
-        #[test]
-        fn smoke_test() {
-            let result = fetch_npm_registry_details("zod");
-            println!("{:?}", result);
-            // assert!(result.is_ok());
+            assert!(parse_args(&args).packages.is_empty());
         }
     }
 }
