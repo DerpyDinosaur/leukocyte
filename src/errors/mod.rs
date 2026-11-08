@@ -16,6 +16,9 @@ pub enum LeukoError {
     #[error("'{0}' is not a supported package manager")]
     UnsupportedPackageManager(String),
 
+    #[error("{0}")]
+    LaunchFailed(#[from] std::io::Error),
+
     /* Network errors */
     #[error("Request failed: {0}")]
     Http(#[from] reqwest::Error),

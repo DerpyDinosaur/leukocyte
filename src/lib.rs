@@ -53,24 +53,19 @@ pub fn whatami(args: &Vec<String>) -> &str {
     };
 }
 
-pub fn extract_packages(args: &[String]) -> Vec<String> {
-    /*
-        Get all packages from arguments
-    */
-    let mut packages = Vec::new();
+pub fn parse_args(args: &[String]) -> types::ParsedArgs {
+    let mut parsed = types::ParsedArgs { verb: None, flags: vec![], packages: vec![] };
+
     for arg in args {
         if arg.starts_with('-') {
-            continue;
+            parsed.flags.push(arg.clone());
+        } else if parsed.verb.is_none() {
+            parsed.verb = Some(arg.clone()); // first non-flag is the command
+        } else {
+            parsed.packages.push(arg.clone());
         }
-        if SUPPORTED_PACKAGE_MANAGERS.contains(&arg.as_str()) {
-            continue;
-        }
-        if SUPPORTED_ADD_PACKAGE_CMDS.contains(&arg.as_str()) {
-            continue;
-        }
-        packages.push(arg.to_string());
     }
-    packages
+    parsed
 }
 
 /// Get single json request and parse into struct with serde, this is to provide flexibility
@@ -161,19 +156,19 @@ mod tests {
         #[test]
         fn filters_flags() {
             let args = ["add", "-D", "zod"].map(str::to_string).to_vec();
-            assert_eq!(extract_packages(&args), vec!["zod"]);
+            assert_eq!(parse_args(&args).packages, vec!["zod"]);
         }
 
         #[test]
         fn filters_subcommands() {
             let args = ["add", "zod", "react"].map(str::to_string).to_vec();
-            assert_eq!(extract_packages(&args), vec!["zod", "react"]);
+            assert_eq!(parse_args(&args).packages, vec!["zod", "react"]);
         }
 
         #[test]
         fn empty() {
             let args = [].map(str::to_string).to_vec();
-            assert!(extract_packages(&args).is_empty());
+            assert!(parse_args(&args).packages.is_empty());
         }
     }
 }

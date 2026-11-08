@@ -245,7 +245,7 @@ async fn reveal(pb: &ProgressBar, score: u8) {
     pb.abandon();
 }
 
-pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
+pub fn audit_packages(packages: &[String]) -> Result<Vec<String>, LeukoError> {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let client = reqwest::Client::new();
     let mp = MultiProgress::new();
@@ -339,7 +339,8 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
                     // DELETE: This is for viewing animations while designing
                     // tokio::time::sleep(Duration::from_secs(1)).await;
 
-                    (name, Some(package_audit))
+                    let arg = format!("{}@{}", name, version);
+                    (arg, Some(package_audit))
                 }
             })
             .buffer_unordered(16)
@@ -352,10 +353,20 @@ pub fn audit_packages(packages: &[String]) -> Result<(), LeukoError> {
     header.finish_and_clear();
     mp.clear().ok();
 
+    let passing_args: Vec<String> = results
+        .iter()
+        .filter(|(_, audit)| {
+            audit
+                .as_ref()
+                .is_some_and(|a| a.verdict == Verdict::Pass)
+        })
+        .map(|(arg, _)| arg.clone())
+        .collect();
+
     let audits: Vec<Audit> = results.into_iter().filter_map(|(_, audit)| audit).collect();
     audit_packages_report(&audits, (name_width, version_width));
 
-    Ok(())
+    Ok(passing_args)
 }
 
 fn sandbox(_packages: &[String]) -> Result<(), LeukoError> {
@@ -364,7 +375,10 @@ fn sandbox(_packages: &[String]) -> Result<(), LeukoError> {
 
 pub fn run(args: AuditArgs) -> Result<(), LeukoError> {
     match args.command {
-        Some(AuditCommands::Pkgs { packages }) => audit_packages(&packages),
+        Some(AuditCommands::Pkgs { packages }) => {
+            audit_packages(&packages)?;
+            Ok(())
+        },
         Some(AuditCommands::Test { packages }) => sandbox(&packages),
         None => audit_package_file(),
     }
