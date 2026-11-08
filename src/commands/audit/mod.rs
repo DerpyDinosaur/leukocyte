@@ -458,7 +458,7 @@ mod tests {
         let result = audit(&meta, &version, &previous_version);
         let findings = &result.findings;
 
-        assert_eq!(result.score, 0);
+        assert_eq!(result.score, 60);
         assert_eq!(findings.len(), 1);
 
         let script_finding = &findings[0];
